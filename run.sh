@@ -39,7 +39,7 @@ fi
 # Print sleek startup banner
 echo ""
 echo "======================================================================"
-echo "  🚀 OmniSearch Universal Discovery Engine v2.1.0"
+echo "  🚀 OmniSearch Universal Discovery Engine v2.2.0"
 echo "======================================================================"
 echo "  🌐 Live Dashboard:  http://localhost:${PORT}"
 echo "  📡 API Docs:        http://localhost:${PORT}/docs"

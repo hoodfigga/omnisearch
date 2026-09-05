@@ -33,6 +33,13 @@ from omnisearch.adapters.generic_web import GenericWebAdapter
 from omnisearch.adapters.open_web import OpenWebDiscoveryAdapter
 from omnisearch.adapters.adult_web import AdultVideoNetworkAdapter
 from omnisearch.adapters.file_hosts import FileHostingAdapter
+from omnisearch.adapters.github import GitHubAdapter
+from omnisearch.adapters.huggingface import HuggingFaceAdapter
+from omnisearch.adapters.academic import ZenodoAdapter, ArxivAdapter
+from omnisearch.adapters.library_media import OpenLibraryAdapter, WikimediaCommonsAdapter
+from omnisearch.adapters.openverse import OpenverseAdapter
+from omnisearch.adapters.torrents import NyaaAdapter
+from omnisearch.adapters.registries import RegistryAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +74,7 @@ class VideoDiscoveryOrchestrator:
         self,
         adapters: Optional[List[BaseSourceAdapter]] = None,
         cache: Optional[SearchCache] = None,
-        max_concurrent_sources: int = 12,
+        max_concurrent_sources: int = 20,
     ):
         self.cache = cache or SearchCache()
         self.semaphore = asyncio.Semaphore(max_concurrent_sources)
@@ -84,6 +91,15 @@ class VideoDiscoveryOrchestrator:
             PeerTubeAdapter(),
             MRSSAdapter(),
             GenericWebAdapter(),
+            GitHubAdapter(),
+            HuggingFaceAdapter(),
+            ZenodoAdapter(),
+            ArxivAdapter(),
+            OpenLibraryAdapter(),
+            WikimediaCommonsAdapter(),
+            OpenverseAdapter(),
+            NyaaAdapter(),
+            RegistryAdapter(),
         ]
         for adapter in default_adapters:
             self.register_adapter(adapter)

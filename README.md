@@ -89,6 +89,15 @@ Equipped with an AST-driven query parser, strict word-boundary matching, an auto
 | **Turbobit / Nitroflare / DDownload / Katfile** | Download page & file size detection | Any |
 | **Open HTTP Directories (Apache, Nginx, Caddy)** | Native parsing of `Index of /` file tables, sizes & direct URLs | Any |
 | **Open Web & Wikipedia** | Standard web pages, documentation, and direct file links | Any |
+| **GitHub** | Repo search + release asset binaries (`browser_download_url`) | Software, Archives |
+| **HuggingFace Hub** | ML models & datasets with weights/data access | AI Models, Datasets |
+| **Zenodo** | Research records with direct file downloads (`/files/.../content`) | Research Data, Documents, Datasets |
+| **arXiv** | Papers with direct PDF links (`/pdf/{id}`) | Papers, PDFs |
+| **OpenLibrary** | Books with public-domain ebook PDF downloads (via IA) | Books, Ebooks |
+| **Wikimedia Commons** | Free media files with direct `upload.wikimedia.org` URLs | Images, Audio, Video, PDFs |
+| **Openverse** | CC-licensed images & audio aggregated from 20+ providers | Images, Audio |
+| **Nyaa / Sukebei** | Torrents via RSS: direct `.torrent` files, seeders, infoHash | Software, Anime, Data, Adult |
+| **npm / crates.io** | Package pages + direct tarball downloads (`.tgz` / `.crate`) | Software Packages |
 | **Explicit Content** | Tagged explicit networks with a toggleable filter (`OMNISEARCH_ADULT_ENABLED=0` disables) | Video & Media |
 
 ---
@@ -230,7 +239,7 @@ OmniSearch includes a comprehensive test suite:
 .venv/bin/pytest -v
 ```
 
-Verified test coverage (83 tests):
+Verified test coverage (94 tests):
 - SSRF security protection rejecting private LANs, link-local, loopback, and cloud metadata (169.254.169.254)
 - Deterministic cache key generation (no collision across filters) and LRU capacity eviction
 - Async application lifespan with complete HTTP connection pool teardown
@@ -248,6 +257,10 @@ Verified test coverage (83 tests):
 - Overall search deadline enforcement and per-source candidate caps
 - MRSS query-term filtering and explicit-content source toggle
 - HTTP client POST path exercising rate limiter and retries
+- v2.2 adapters: GitHub (repos + release assets), HuggingFace (models/datasets),
+  Zenodo (direct file links), arXiv (Atom→PDF), OpenLibrary (public ebooks),
+  Commons (direct upload URLs, utm-stripped), Openverse (image+audio),
+  Nyaa (RSS torrents w/ seeders+infoHash), npm/crates.io (tarballs)
 
 ---
 
@@ -289,6 +302,13 @@ Verified test coverage (83 tests):
 │   │   ├── internet_archive.py   # Internet Archive search
 │   │   ├── peertube.py           # PeerTube federated network
 │   │   ├── mrss.py               # MediaRSS XML feeds (query-filtered)
+│   │   ├── github.py             # GitHub repos & release binaries
+│   │   ├── huggingface.py        # HuggingFace models & datasets
+│   │   ├── academic.py           # Zenodo (research files) & arXiv (paper PDFs)
+│   │   ├── library_media.py      # OpenLibrary (books) & Wikimedia Commons (media)
+│   │   ├── openverse.py          # Openverse CC images & audio
+│   │   ├── torrents.py           # Nyaa/Sukebei torrents via RSS
+│   │   ├── registries.py         # npm & crates.io package registries
 │   │   └── generic_web.py        # Generic web structured discovery
 │   ├── api/
 │   │   ├── app.py                # FastAPI app & static file routing
@@ -298,7 +318,7 @@ Verified test coverage (83 tests):
 │           ├── index.html        # Clean discovery dashboard
 │           ├── style.css         # Modern list view CSS design system
 │           └── app.js            # Interactive client with search highlights
-├── tests/                        # Full automated test suite (83 tests)
+├── tests/                        # Full automated test suite (94 tests)
 ├── assets/
 │   └── logo.jpg                  # OmniSearch logo
 ├── pyproject.toml

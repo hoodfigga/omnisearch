@@ -133,10 +133,10 @@ def format_bytes(size_bytes: int) -> str:
 
 
 def parse_size_str(text: str) -> Optional[int]:
-    """Parses size strings like '1.45 GB', '25 MB', '(145.2 MB)', '350M', '45M' into byte count."""
+    """Parses size strings like '1.45 GB', '25 MB', '624.0 MiB', '(145.2 MB)', '350M', '45M' into byte count."""
     if not text:
         return None
-    match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]B?|bytes|b)\b", text, re.I)
+    match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]I?B?|bytes|b)\b", text, re.I)
     if not match:
         return None
     num = float(match.group(1))

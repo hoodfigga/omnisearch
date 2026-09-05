@@ -6,7 +6,7 @@ from omnisearch.models.video import VideoRecord, MatchProvenance, MatchType, Mat
 from omnisearch.models.query import SearchQuery, SearchOptions, SearchResponse
 from omnisearch.core.orchestrator import VideoDiscoveryOrchestrator
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 __all__ = [
     "VideoRecord",
