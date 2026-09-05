@@ -125,7 +125,7 @@ Configuration via environment variables:
 This starts the Uvicorn web server and opens the discovery dashboard:
 ```
 ======================================================================
-  🚀 OmniSearch Universal Discovery Engine v2.1.0
+  🚀 OmniSearch Universal Discovery Engine v2.2.0
 ======================================================================
   🌐 Live Dashboard:  http://localhost:8000
   📡 API Docs:        http://localhost:8000/docs
