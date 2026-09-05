@@ -21,7 +21,11 @@ dependencies = [
 [project.scripts]
 omnisearch = "omnisearch.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["omnisearch*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
