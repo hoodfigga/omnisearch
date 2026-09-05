@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniSearch — Universal File & Everything Discovery Engine</title>
+  <meta name="description" content="Universal web discovery and direct download search engine with exact word-boundary matching, cyberlocker crawling, open directory indexing, and provenance tracking.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="logo-area">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">
+        <h1>OmniSearch</h1>
+        <p>Universal File, Direct Download & Everything Discovery Engine</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-secondary" id="btn-export-csv" title="Export current results as CSV">Export CSV</button>
+      <button class="btn-secondary" id="btn-export-json" title="Export current results as JSON">Export JSON</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Search Configuration Panel -->
+    <section class="search-panel" aria-label="Search Configuration">
+      <form id="search-form">
+        <div class="search-input-group">
+          <div class="search-input-wrapper">
+            <svg class="search-icon-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input 
+              type="text" 
+              id="search-query" 
+              class="search-input" 
+              placeholder='Enter filename, software, document, or search query (e.g. "blender 4.0", "ubuntu-24.04.iso", "research paper pdf", "mediafire")...'
+              autocomplete="off"
+              required
+            >
+          </div>
+          <button type="submit" class="btn-primary" id="search-btn">
+            <span>Find Anything</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Query Syntax Helper -->
+      <div class="syntax-helper">
+        <span>Supported Syntax:</span>
+        <span class="syntax-pill">"quoted phrase"</span>
+        <span class="syntax-pill">AND / OR / NOT</span>
+        <span class="syntax-pill">title:keyword</span>
+        <span class="syntax-pill">meta:keyword</span>
+        <span class="syntax-pill">-negated</span>
+        <span class="syntax-pill">site:mediafire.com</span>
+      </div>
+
+      <!-- Controls & Source Selectors -->
+      <div class="controls-row">
+        <div class="mode-selectors">
+          <label for="match-mode" class="mode-label">Matching Mode:</label>
+          <select id="match-mode" class="custom-select">
+            <option value="EXACT_MATCH" selected>Exact Match (Strict Word-Boundary)</option>
+            <option value="TITLE_AND_METADATA">Title & Metadata Match</option>
+            <option value="TITLE_ONLY">Title/Filename Only (Strict)</option>
+            <option value="FLEXIBLE_MATCH">Flexible Match (Term Proximity)</option>
+            <option value="SEMANTIC_EXPANSION">Semantic & Stemmed Expansion</option>
+          </select>
+
+          <label for="item-type-filter" class="mode-label" style="margin-left: 0.75rem;">Category:</label>
+          <select id="item-type-filter" class="custom-select">
+            <option value="" selected>All Items, Files & Websites</option>
+            <option value="DIRECT_ONLY">Direct Downloads Only</option>
+            <option value="WEB_PAGE">Websites & Pages</option>
+            <option value="ARCHIVE">Archives (.zip, .rar, .7z, .tar)</option>
+            <option value="DOCUMENT">Documents (.pdf, .epub, .docx)</option>
+            <option value="SOFTWARE">Software (.exe, .iso, .apk, .dmg)</option>
+            <option value="VIDEO">Video (.mp4, .mkv, streams)</option>
+            <option value="AUDIO">Audio (.mp3, .flac, .wav)</option>
+            <option value="DATASET">Datasets (.json, .parquet, .csv)</option>
+          </select>
+
+          <label for="max-results" class="mode-label" style="margin-left: 0.75rem;">Limit:</label>
+          <select id="max-results" class="custom-select">
+            <option value="30">30</option>
+            <option value="60">60</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </div>
+
+        <div class="source-checkboxes" id="source-checkboxes">
+          <!-- Populated dynamically via /api/sources -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Metrics & Observability Bar -->
+    <section class="metrics-bar" id="metrics-bar" style="display: none;" aria-label="Search Metrics">
+      <!-- Injected via app.js -->
+    </section>
+
+    <!-- Results Section -->
+    <section id="results-container" aria-label="Search Results">
+      <div class="state-container">
+        <h3>Ready to Discover Everything</h3>
+        <p style="margin-top: 0.5rem;">Enter a filename, keyword, or query above to discover downloads and pages across MediaFire, MEGA, Rapidgator, 1Fichier, Pixeldrain, Google Drive, Bunkr, Open Directories, and the entire open web.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

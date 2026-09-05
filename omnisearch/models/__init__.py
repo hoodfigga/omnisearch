@@ -1,0 +1,43 @@
+from omnisearch.models.video import (
+    VideoRecord,
+    MatchProvenance,
+    MatchSpan,
+    MatchType,
+    MatchMode,
+    VideoMetadataSource,
+)
+from omnisearch.models.query import (
+    SearchQuery,
+    SearchOptions,
+    SearchResponse,
+    SearchMetrics,
+    ASTNode,
+    TermNode,
+    PhraseNode,
+    AndNode,
+    OrNode,
+    NotNode,
+    FieldNode,
+    NodeType,
+)
+
+__all__ = [
+    "VideoRecord",
+    "MatchProvenance",
+    "MatchSpan",
+    "MatchType",
+    "MatchMode",
+    "VideoMetadataSource",
+    "SearchQuery",
+    "SearchOptions",
+    "SearchResponse",
+    "SearchMetrics",
+    "ASTNode",
+    "TermNode",
+    "PhraseNode",
+    "AndNode",
+    "OrNode",
+    "NotNode",
+    "FieldNode",
+    "NodeType",
+]
