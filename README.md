@@ -322,7 +322,15 @@ Verified test coverage (94 tests):
 ├── assets/
 │   └── logo.jpg                  # OmniSearch logo
 ├── pyproject.toml
+├── LICENSE                       # GNU General Public License v3.0
 ├── run.py
 ├── run.sh
 └── README.md
 ```
+
+---
+
+## 📄 License
+
+OmniSearch is licensed under the **GNU General Public License v3.0 (GPL-3.0)**. See the [LICENSE](LICENSE) file for the full text.
+
