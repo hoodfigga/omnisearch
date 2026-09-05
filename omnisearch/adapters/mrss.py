@@ -27,7 +27,9 @@ class MRSSAdapter(BaseSourceAdapter):
 
     def __init__(self, custom_feeds: Optional[List[str]] = None, **kwargs):
         super().__init__(**kwargs)
-        self.feeds = custom_feeds or self.PUBLIC_FEEDS
+        # `is not None` so an explicitly empty custom feed list is honored
+        # (an `or` here would silently fall back to the defaults).
+        self.feeds = custom_feeds if custom_feeds is not None else self.PUBLIC_FEEDS
 
     @property
     def source_id(self) -> str:
@@ -38,6 +40,10 @@ class MRSSAdapter(BaseSourceAdapter):
         return "MediaRSS Feeds"
 
     async def search(self, query: SearchQuery, page: int = 1) -> List[VideoRecord]:
+        search_terms = " ".join(query.extracted_phrases + query.extracted_terms) or query.raw_query
+        if not search_terms.strip():
+            return []
+
         records: List[VideoRecord] = []
         for feed_url in self.feeds:
             try:
@@ -48,6 +54,20 @@ class MRSSAdapter(BaseSourceAdapter):
             except Exception as exc:
                 logger.debug("MRSS feed fetch failed for %s: %s", feed_url, exc)
                 continue
+
+        # Only surface feed items that share at least one query term —
+        # otherwise the fixed public feeds inject unrelated noise into
+        # every query.
+        terms = {t.lower() for t in (query.extracted_terms + query.extracted_phrases)}
+        if terms:
+            filtered: List[VideoRecord] = []
+            for rec in records:
+                haystack = " ".join(
+                    [rec.title or "", rec.description or "", " ".join(rec.tags or [])]
+                ).lower()
+                if any(t in haystack for t in terms):
+                    filtered.append(rec)
+            records = filtered
 
         return records
 

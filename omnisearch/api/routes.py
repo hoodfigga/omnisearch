@@ -3,6 +3,7 @@ FastAPI REST API routes for universal file, document, download, and web discover
 """
 
 from __future__ import annotations
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -29,8 +30,13 @@ class SearchRequest(BaseModel):
     file_extensions: Optional[List[str]] = Field(default=None, description="Filter by file extensions (e.g. ['zip', 'iso', 'pdf'])")
     max_results: int = Field(default=100, ge=1, le=500, description="Max results")
     max_pages_per_source: int = Field(default=3, ge=1, le=15, description="Max pages per source")
+    timeout_seconds: float = Field(default=35.0, ge=1.0, le=120.0, description="Overall deadline for the multi-source search")
     min_score: float = Field(default=0.1, ge=0.0, description="Relevance cutoff score")
+    language: Optional[str] = Field(default=None, description="Preferred language code (e.g. 'en')")
+    published_after: Optional[datetime] = Field(default=None, description="Only items published after this ISO timestamp")
+    published_before: Optional[datetime] = Field(default=None, description="Only items published before this ISO timestamp")
     allow_cache: bool = Field(default=True, description="Enable caching")
+    cache_ttl_seconds: int = Field(default=3600, ge=1, le=86400, description="Cache TTL in seconds")
 
 
 class ExtractRequest(BaseModel):
@@ -48,8 +54,13 @@ async def search_items(req: SearchRequest):
         file_extensions=req.file_extensions,
         max_results=req.max_results,
         max_pages_per_source=req.max_pages_per_source,
+        timeout_seconds=req.timeout_seconds,
         min_score=req.min_score,
+        language=req.language,
+        published_after=req.published_after,
+        published_before=req.published_before,
         allow_cache=req.allow_cache,
+        cache_ttl_seconds=req.cache_ttl_seconds,
     )
     try:
         response = await orchestrator.search(req.query, options=opts)
@@ -80,6 +91,19 @@ async def extract_url(req: ExtractRequest):
 async def get_sources():
     """Returns list of registered discovery adapters and their statuses."""
     return orchestrator.get_registered_sources()
+
+
+@router.get("/cache/stats")
+async def cache_stats():
+    """Returns current query cache occupancy."""
+    return {"entries": len(orchestrator.cache), "max_entries": orchestrator.cache.max_entries}
+
+
+@router.post("/cache/clear")
+async def cache_clear():
+    """Clears all cached query responses."""
+    orchestrator.cache.clear()
+    return {"status": "cleared", "entries": len(orchestrator.cache)}
 
 
 @router.get("/health")

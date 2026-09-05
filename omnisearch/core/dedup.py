@@ -4,7 +4,7 @@ Canonical identity resolution, URL normalization, and metadata deduplication eng
 
 from __future__ import annotations
 import re
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 from typing import Dict, List, Optional, Tuple
 from omnisearch.models.video import ItemRecord, MatchProvenance, ItemType
 
@@ -31,26 +31,26 @@ VIMEO_ID_RE = re.compile(r"(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video
 DAILYMOTION_ID_RE = re.compile(r"(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([a-zA-Z0-9]+)")
 ARCHIVE_ID_RE = re.compile(r"archive\.org\/(?:details|embed|download)\/([a-zA-Z0-9_.-]+)")
 
-MEDIAFIRE_RE = re.compile(r"mediafire\.com\/(?:file\/|view\/|\?)?([a-zA-Z0-9]+)", re.I)
-MEGA_RE = re.compile(r"mega\.(?:nz|io)\/#?(?:file|folder)\/([a-zA-Z0-9_-]+)", re.I)
-RAPIDGATOR_RE = re.compile(r"rapidgator\.net\/file\/([a-zA-Z0-9]+)", re.I)
-ONEFICHIER_RE = re.compile(r"1fichier\.com\/\?([a-zA-Z0-9]+)", re.I)
-TURBOBIT_RE = re.compile(r"turbobit\.net\/([a-zA-Z0-9]+)", re.I)
-NITROFLARE_RE = re.compile(r"nitroflare\.com\/view\/([a-zA-Z0-9]+)", re.I)
-DDOWNLOAD_RE = re.compile(r"ddownload\.com\/([a-zA-Z0-9]+)", re.I)
-KATFILE_RE = re.compile(r"katfile\.com\/([a-zA-Z0-9]+)", re.I)
-PIXELDRAIN_RE = re.compile(r"pixeldrain\.com\/(?:u|api\/file)\/([a-zA-Z0-9_-]+)", re.I)
-GOFILE_RE = re.compile(r"gofile\.io\/d\/([a-zA-Z0-9_-]+)", re.I)
-KRAKENFILES_RE = re.compile(r"krakenfiles\.com\/view\/([a-zA-Z0-9_-]+)", re.I)
-CATBOX_RE = re.compile(r"(?:files\.)?catbox\.moe\/([a-zA-Z0-9_.-]+)", re.I)
-TMPFILES_RE = re.compile(r"tmpfiles\.org\/(?:dl\/)?([0-9]+)", re.I)
-CYBERFILE_RE = re.compile(r"(?:cyberfile|cyberdrop|saint2)\.[a-z]+\/(?:f|d|file)\/([a-zA-Z0-9_-]+)", re.I)
-GDRIVE_RE = re.compile(r"drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)", re.I)
-DROPBOX_RE = re.compile(r"dropbox\.com\/(?:s|scl\/fi)\/([a-zA-Z0-9_-]+)", re.I)
-GITHUB_RE = re.compile(r"github\.com\/([^/]+\/[^/]+)\/(?:releases|archive)", re.I)
-WORKUPLOAD_RE = re.compile(r"workupload\.com\/file\/([a-zA-Z0-9_-]+)", re.I)
+MEDIAFIRE_RE = re.compile(r"(?:^|\.)mediafire\.com\/(?:file\/|view\/|\?)?([a-zA-Z0-9]+)", re.I)
+MEGA_RE = re.compile(r"(?:^|\.)mega\.(?:nz|io)\/#?(?:file|folder)\/([a-zA-Z0-9_-]+)", re.I)
+RAPIDGATOR_RE = re.compile(r"(?:^|\.)rapidgator\.net\/file\/([a-zA-Z0-9]+)", re.I)
+ONEFICHIER_RE = re.compile(r"(?:^|\.)1fichier\.com\/?\??([a-zA-Z0-9]+)", re.I)
+TURBOBIT_RE = re.compile(r"(?:^|\.)turbobit\.net\/([a-zA-Z0-9]+)", re.I)
+NITROFLARE_RE = re.compile(r"(?:^|\.)nitroflare\.com\/view\/([a-zA-Z0-9]+)", re.I)
+DDOWNLOAD_RE = re.compile(r"(?:^|\.)ddownload\.com\/([a-zA-Z0-9]+)", re.I)
+KATFILE_RE = re.compile(r"(?:^|\.)katfile\.com\/([a-zA-Z0-9]+)", re.I)
+PIXELDRAIN_RE = re.compile(r"(?:^|\.)pixeldrain\.com\/(?:u|api\/file)\/([a-zA-Z0-9_-]+)", re.I)
+GOFILE_RE = re.compile(r"(?:^|\.)gofile\.io\/d\/([a-zA-Z0-9_-]+)", re.I)
+KRAKENFILES_RE = re.compile(r"(?:^|\.)krakenfiles\.com\/view\/([a-zA-Z0-9_-]+)", re.I)
+CATBOX_RE = re.compile(r"(?:^|\.)(?:files\.)?catbox\.moe\/([a-zA-Z0-9_.-]+)", re.I)
+TMPFILES_RE = re.compile(r"(?:^|\.)tmpfiles\.org\/(?:dl\/)?([0-9]+)", re.I)
+CYBERFILE_RE = re.compile(r"(?:^|\.)(?:cyberfile|cyberdrop|saint2)\.[a-z]+\/(?:f|d|file)\/([a-zA-Z0-9_-]+)", re.I)
+GDRIVE_RE = re.compile(r"(?:^|\.)drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)", re.I)
+DROPBOX_RE = re.compile(r"(?:^|\.)(?:www\.)?dropbox\.com\/(?:s|scl\/fi)\/([a-zA-Z0-9_-]+)", re.I)
+GITHUB_RE = re.compile(r"(?:^|\.)(?:www\.)?github\.com\/([^/]+\/[^/]+)\/(?:releases|archive)", re.I)
+WORKUPLOAD_RE = re.compile(r"(?:^|\.)workupload\.com\/file\/([a-zA-Z0-9_-]+)", re.I)
 
-BUNKR_RE = re.compile(r"(?:bunkr|bunkrr|bunker)\.[a-z0-9.]+", re.I)
+BUNKR_RE = re.compile(r"(?:^|\.)(?:bunkr|bunkrr|bunker)\.[a-z0-9.]+", re.I)
 BUNKR_FILE_ID_RE = re.compile(r"/(?:f|v|d|file)/([a-zA-Z0-9_-]+)", re.I)
 BUNKR_ALBUM_ID_RE = re.compile(r"/a/([a-zA-Z0-9_-]+)", re.I)
 
@@ -67,10 +67,12 @@ def normalize_url(raw_url: str) -> str:
         if netloc.startswith("m."):
             netloc = netloc[2:]
 
-        # Filter query params
-        query_dict = parse_qs(parsed.query, keep_blank_values=False)
-        clean_query_dict = {k: v for k, v in query_dict.items() if k.lower() not in TRACKING_PARAMS}
-        clean_query = urlencode(clean_query_dict, doseq=True)
+        # Filter query params while preserving their raw formatting:
+        # valueless params (1fichier.com/?abc123 — the bare param IS the file
+        # id) and original encoding must survive canonicalization.
+        raw_params = [p for p in parsed.query.split("&") if p]
+        kept = [p for p in raw_params if p.split("=")[0].lower() not in TRACKING_PARAMS]
+        clean_query = "&".join(kept)
 
         # Standardize path
         path = parsed.path.rstrip("/") if parsed.path != "/" else "/"
@@ -97,93 +99,100 @@ def resolve_platform_and_id(url: str) -> Tuple[str, Optional[str], str]:
     parsed = urlparse(norm_url)
     netloc = parsed.netloc.lower()
 
+    # Domain-scoped subject: leading dot guarantees host-boundary anchoring,
+    # so 'debunkr.com' can never match the Bunkr patterns while
+    # 'www.mediafire.com' and 'sub.bunkr.is' still do.
+    host_subject = f".{netloc}{parsed.path}"
+    if parsed.query:
+        host_subject += f"?{parsed.query}"
+
     # MediaFire
-    mf_match = MEDIAFIRE_RE.search(norm_url)
+    mf_match = MEDIAFIRE_RE.search(host_subject)
     if mf_match:
         return "MediaFire", mf_match.group(1), norm_url
 
     # MEGA
-    mega_match = MEGA_RE.search(norm_url)
+    mega_match = MEGA_RE.search(host_subject)
     if mega_match:
         return "MEGA", mega_match.group(1), norm_url
 
     # Rapidgator
-    rg_match = RAPIDGATOR_RE.search(norm_url)
+    rg_match = RAPIDGATOR_RE.search(host_subject)
     if rg_match:
         return "Rapidgator", rg_match.group(1), norm_url
 
     # 1Fichier
-    fich_match = ONEFICHIER_RE.search(norm_url)
+    fich_match = ONEFICHIER_RE.search(host_subject)
     if fich_match:
         return "1Fichier", fich_match.group(1), norm_url
 
     # Turbobit
-    tb_match = TURBOBIT_RE.search(norm_url)
+    tb_match = TURBOBIT_RE.search(host_subject)
     if tb_match:
         return "Turbobit", tb_match.group(1), norm_url
 
     # Nitroflare
-    nf_match = NITROFLARE_RE.search(norm_url)
+    nf_match = NITROFLARE_RE.search(host_subject)
     if nf_match:
         return "Nitroflare", nf_match.group(1), norm_url
 
     # DDownload
-    dd_match = DDOWNLOAD_RE.search(norm_url)
+    dd_match = DDOWNLOAD_RE.search(host_subject)
     if dd_match:
         return "DDownload", dd_match.group(1), norm_url
 
     # Katfile
-    kf_match = KATFILE_RE.search(norm_url)
+    kf_match = KATFILE_RE.search(host_subject)
     if kf_match:
         return "Katfile", kf_match.group(1), norm_url
 
     # Pixeldrain
-    pd_match = PIXELDRAIN_RE.search(norm_url)
+    pd_match = PIXELDRAIN_RE.search(host_subject)
     if pd_match:
         return "Pixeldrain", pd_match.group(1), f"https://pixeldrain.com/u/{pd_match.group(1)}"
 
     # Gofile
-    gf_match = GOFILE_RE.search(norm_url)
+    gf_match = GOFILE_RE.search(host_subject)
     if gf_match:
         return "Gofile", gf_match.group(1), norm_url
 
     # Krakenfiles
-    kraken_match = KRAKENFILES_RE.search(norm_url)
+    kraken_match = KRAKENFILES_RE.search(host_subject)
     if kraken_match:
         return "Krakenfiles", kraken_match.group(1), norm_url
 
     # Catbox / Litterbox
-    cat_match = CATBOX_RE.search(norm_url)
+    cat_match = CATBOX_RE.search(host_subject)
     if cat_match:
         return "Catbox", cat_match.group(1), norm_url
 
     # Tmpfiles
-    tmp_match = TMPFILES_RE.search(norm_url)
+    tmp_match = TMPFILES_RE.search(host_subject)
     if tmp_match:
         return "Tmpfiles", tmp_match.group(1), norm_url
 
     # Cyberfile / Cyberdrop / Saint2
-    cf_match = CYBERFILE_RE.search(norm_url)
+    cf_match = CYBERFILE_RE.search(host_subject)
     if cf_match:
         return "Cyberfile", cf_match.group(1), norm_url
 
     # Google Drive
-    gdrive_match = GDRIVE_RE.search(norm_url)
+    gdrive_match = GDRIVE_RE.search(host_subject)
     if gdrive_match:
         return "Google Drive", gdrive_match.group(1), f"https://drive.google.com/file/d/{gdrive_match.group(1)}/view"
 
     # Dropbox
-    db_match = DROPBOX_RE.search(norm_url)
+    db_match = DROPBOX_RE.search(host_subject)
     if db_match:
         return "Dropbox", db_match.group(1), norm_url
 
     # GitHub
-    gh_match = GITHUB_RE.search(norm_url)
+    gh_match = GITHUB_RE.search(host_subject)
     if gh_match:
         return "GitHub", gh_match.group(1), norm_url
 
     # Workupload
-    wu_match = WORKUPLOAD_RE.search(norm_url)
+    wu_match = WORKUPLOAD_RE.search(host_subject)
     if wu_match:
         return "Workupload", wu_match.group(1), norm_url
 

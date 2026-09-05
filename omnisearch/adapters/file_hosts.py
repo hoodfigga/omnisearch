@@ -127,6 +127,9 @@ class FileHostingAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(album_url, headers=headers, timeout=8.0)
             if resp.status_code == 200:
+                # Resolve relative hrefs against the album's own origin instead
+                # of a hardcoded bunkr.cr (Bunkr rotates mirror domains).
+                album_origin = f"{urlparse(album_url).scheme}://{urlparse(album_url).netloc}"
                 soup = BeautifulSoup(resp.text, "html.parser")
                 for div in soup.find_all("div", class_=re.compile("grid-images_box|the_box", re.I)):
                     a_file = div.find("a", href=re.compile(r"/f/|/d/|/v/|/file/", re.I))
@@ -134,7 +137,7 @@ class FileHostingAdapter(BaseSourceAdapter):
                         continue
                     file_href = a_file.get("href", "")
                     if not file_href.startswith("http"):
-                        file_href = f"https://bunkr.cr{file_href}"
+                        file_href = f"{album_origin}{file_href}"
 
                     p_name = div.find("p") or div.find("span", class_="name")
                     item_name = p_name.get_text().strip() if p_name else ""
@@ -246,13 +249,12 @@ class FileHostingAdapter(BaseSourceAdapter):
         discovered: List[str] = []
         try:
             url = "https://html.duckduckgo.com/html/"
-            headers = {
+            client_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Referer": "https://html.duckduckgo.com/",
             }
-            client = await self.http_client.get_client()
-            resp = await client.post(url, data={"q": query_str, "kp": "-2"}, headers=headers, timeout=6.0)
+            resp = await self.http_client.post(url, data={"q": query_str, "kp": "-2"}, headers=client_headers, timeout=6.0)
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.text, "html.parser")
                 for link in soup.find_all("a", href=True):

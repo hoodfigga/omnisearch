@@ -92,7 +92,10 @@ def test_item_record_searchable_map_includes_ext_type_site():
     s_map = item.get_searchable_text_map()
     assert s_map["ext"] == "zip"
     assert s_map["type"] == "archive"
-    assert s_map["site"] == "MediaFire"
+    # site field now includes BOTH the platform label and the canonical domain,
+    # so `site:mediafire.com` and `site:MediaFire` both match.
+    assert "MediaFire" in s_map["site"]
+    assert "example.com" in s_map["site"]
 
 
 def test_match_engine_with_directives():

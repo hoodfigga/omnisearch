@@ -237,13 +237,12 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
         discovered: List[WebSearchResult] = []
         try:
             url = "https://html.duckduckgo.com/html/"
-            headers = {
+            client_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Referer": "https://html.duckduckgo.com/",
             }
-            client = await self.http_client.get_client()
-            resp = await client.post(url, data={"q": search_terms, "kp": "-2"}, headers=headers, timeout=6.0)
+            resp = await self.http_client.post(url, data={"q": search_terms, "kp": "-2"}, headers=client_headers, timeout=6.0)
 
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.text, "html.parser")

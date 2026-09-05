@@ -1,5 +1,5 @@
 """
-Command-Line Interface (CLI) for Video Discovery Engine.
+Command-Line Interface (CLI) for OmniSearch Universal Discovery Engine.
 """
 
 from __future__ import annotations
@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import json
 import sys
+from datetime import datetime
 from typing import List, Optional
 from rich.console import Console
 from rich.table import Table
@@ -14,6 +15,22 @@ from rich.table import Table
 from omnisearch.models.video import ItemType
 from omnisearch.models.query import MatchMode, SearchOptions
 from omnisearch.core.orchestrator import VideoDiscoveryOrchestrator
+
+
+def parse_iso_date(value: str) -> datetime:
+    """Parses a date/datetime argument for --after / --before filters."""
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            dt = datetime.strptime(value, fmt)
+            return dt
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"Invalid date {value!r}; use YYYY-MM-DD or ISO 8601 format"
+        )
 
 
 def parse_args():
@@ -39,7 +56,14 @@ def parse_args():
     parser.add_argument("--sources", help="Comma-separated list of source IDs (e.g. open_web, file_hosts, youtube, peertube, ia)")
     parser.add_argument("--limit", type=int, default=25, help="Maximum number of results to return (default: 25)")
     parser.add_argument("--pages", type=int, default=3, help="Maximum pagination pages per source (default: 3)")
+    parser.add_argument("--timeout", type=float, default=35.0, help="Overall search deadline in seconds (default: 35)")
     parser.add_argument("--min-score", type=float, default=0.1, help="Minimum relevance score threshold")
+    parser.add_argument("--lang", help="Filter by language code (e.g. en)")
+    parser.add_argument("--after", type=parse_iso_date, help="Only items published after this date (YYYY-MM-DD or ISO)")
+    parser.add_argument("--before", type=parse_iso_date, help="Only items published before this date (YYYY-MM-DD or ISO)")
+    parser.add_argument("--min-duration", type=int, help="Minimum media duration in seconds")
+    parser.add_argument("--max-duration", type=int, help="Maximum media duration in seconds")
+    parser.add_argument("--no-cache", action="store_true", help="Bypass the query cache")
     parser.add_argument("--json", action="store_true", help="Output results in structured machine-readable JSON format")
     return parser.parse_args()
 
@@ -73,63 +97,77 @@ async def run_cli():
         file_extensions=file_exts_list,
         max_results=args.limit,
         max_pages_per_source=args.pages,
+        timeout_seconds=args.timeout,
         min_score=args.min_score,
+        language=args.lang,
+        published_after=args.after,
+        published_before=args.before,
+        min_duration_seconds=args.min_duration,
+        max_duration_seconds=args.max_duration,
+        allow_cache=not args.no_cache,
     )
 
     orchestrator = VideoDiscoveryOrchestrator()
 
-    if not args.json:
-        console.print(f"[bold blue]OmniSearch scanning across sources for:[/bold blue] [green]{args.query!r}[/green]")
-        type_str = ", ".join(t.value for t in item_types_list) if item_types_list else "all"
-        ext_str = ", ".join(file_exts_list) if file_exts_list else "all"
-        console.print(f"Mode: [cyan]{args.mode}[/cyan] | Types: [cyan]{type_str}[/cyan] | Exts: [cyan]{ext_str}[/cyan] | Sources: [cyan]{args.sources or 'all'}[/cyan]\n")
+    try:
+        if not args.json:
+            console.print(f"[bold blue]OmniSearch scanning across sources for:[/bold blue] [green]{args.query!r}[/green]")
+            type_str = ", ".join(t.value for t in item_types_list) if item_types_list else "all"
+            ext_str = ", ".join(file_exts_list) if file_exts_list else "all"
+            console.print(f"Mode: [cyan]{args.mode}[/cyan] | Types: [cyan]{type_str}[/cyan] | Exts: [cyan]{ext_str}[/cyan] | Sources: [cyan]{args.sources or 'all'}[/cyan] | Timeout: [cyan]{args.timeout}s[/cyan]\n")
 
-    response = await orchestrator.search(args.query, options=options)
+        response = await orchestrator.search(args.query, options=options)
 
-    if args.json:
-        # Output clean machine-readable JSON
-        json_output = response.model_dump_json(indent=2)
-        print(json_output)
-        return
+        if args.json:
+            json_output = response.model_dump_json(indent=2)
+            print(json_output)
+            return
 
-    # Rich human-readable table output
-    table = Table(title=f"Discovered Files & Resources ({len(response.results)} matches found in {response.metrics.duration_ms} ms)")
-    table.add_column("Rank", justify="right", style="cyan", no_wrap=True)
-    table.add_column("Score", justify="right", style="bold green", no_wrap=True)
-    table.add_column("Type", style="bold magenta", no_wrap=True)
-    table.add_column("Ext", style="yellow", no_wrap=True)
-    table.add_column("Size", justify="right", style="white", no_wrap=True)
-    table.add_column("Direct DL", justify="center", no_wrap=True)
-    table.add_column("Platform", style="cyan", no_wrap=True)
-    table.add_column("Title", style="bold white")
-    table.add_column("URL / Download", style="blue")
+        # Rich human-readable table output
+        table = Table(title=f"Discovered Files & Resources ({len(response.results)} matches found in {response.metrics.duration_ms} ms)")
+        table.add_column("Rank", justify="right", style="cyan", no_wrap=True)
+        table.add_column("Score", justify="right", style="bold green", no_wrap=True)
+        table.add_column("Type", style="bold magenta", no_wrap=True)
+        table.add_column("Ext", style="yellow", no_wrap=True)
+        table.add_column("Size", justify="right", style="white", no_wrap=True)
+        table.add_column("Direct DL", justify="center", no_wrap=True)
+        table.add_column("Platform", style="cyan", no_wrap=True)
+        table.add_column("Title", style="bold white")
+        table.add_column("URL / Download", style="blue")
 
-    for v in response.results:
-        direct_dl = "[bold green]YES[/bold green]" if v.download_url else "[dim]Page[/dim]"
-        size_display = v.file_size_human or "-"
-        ext_display = (v.file_extension or "-").upper()
-        type_display = v.item_type.value if hasattr(v, "item_type") else "FILE"
-        title_display = v.title[:55] + ("..." if len(v.title) > 55 else "")
-        url_display = v.download_url or v.canonical_url
+        for v in response.results:
+            direct_dl = "[bold green]YES[/bold green]" if v.download_url else "[dim]Page[/dim]"
+            size_display = v.file_size_human or "-"
+            ext_display = (v.file_extension or "-").upper()
+            type_display = v.item_type.value if hasattr(v, "item_type") else "FILE"
+            title_display = v.title[:55] + ("..." if len(v.title) > 55 else "")
+            url_display = v.download_url or v.canonical_url
 
-        table.add_row(
-            str(v.rank or "-"),
-            f"{v.relevance_score:.2f}",
-            type_display,
-            ext_display,
-            size_display,
-            direct_dl,
-            v.platform,
-            title_display,
-            url_display,
-        )
+            table.add_row(
+                str(v.rank or "-"),
+                f"{v.relevance_score:.2f}",
+                type_display,
+                ext_display,
+                size_display,
+                direct_dl,
+                v.platform,
+                title_display,
+                url_display,
+            )
 
-    console.print(table)
-    console.print(f"\n[dim]Sources contacted: {', '.join(response.metrics.sources_contacted)} | Candidates: {response.metrics.candidates_retrieved} | Deduplicated: {response.metrics.duplicates_filtered}[/dim]")
+        console.print(table)
+        console.print(f"\n[dim]Sources contacted: {', '.join(response.metrics.sources_contacted)} | Candidates: {response.metrics.candidates_retrieved} | Deduplicated: {response.metrics.duplicates_filtered} | Stopped: {response.metrics.stopping_reason}[/dim]")
+    finally:
+        # Cleanly release HTTP connection pools (avoids "Unclosed connection" noise).
+        await orchestrator.close()
 
 
 def main():
-    asyncio.run(run_cli())
+    try:
+        asyncio.run(run_cli())
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        sys.exit(130)
 
 
 if __name__ == "__main__":

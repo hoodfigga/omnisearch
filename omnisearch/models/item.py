@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 
 
@@ -127,6 +128,12 @@ class ItemRecord(BaseModel):
 
     def get_searchable_text_map(self) -> Dict[str, str]:
         """Returns map of field_name -> text content for matching."""
+        try:
+            domain = urlparse(self.canonical_url or "").netloc.lower()
+            if domain.startswith("www."):
+                domain = domain[4:]
+        except Exception:
+            domain = ""
         fields = {
             "title": self.title or "",
             "file_name": self.file_name or "",
@@ -137,7 +144,7 @@ class ItemRecord(BaseModel):
             "url": self.canonical_url or "",
             "ext": self.file_extension or "",
             "type": (self.item_type.value if hasattr(self.item_type, "value") else str(self.item_type)).lower(),
-            "site": self.platform or "",
+            "site": f"{self.platform or ''} {domain}".strip(),
         }
         return fields
 

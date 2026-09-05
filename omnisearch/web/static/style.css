@@ -282,6 +282,15 @@ main {
   cursor: pointer;
 }
 
+.checkbox-chip.source-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.checkbox-chip.source-disabled input {
+  cursor: not-allowed;
+}
+
 /* Status & Metrics Bar */
 .metrics-bar {
   display: flex;
@@ -305,6 +314,11 @@ main {
 
 .metric-highlight {
   color: var(--text-primary);
+  font-weight: 600;
+}
+
+.metric-warn {
+  color: var(--accent-rose, #f43f5e);
   font-weight: 600;
 }
 

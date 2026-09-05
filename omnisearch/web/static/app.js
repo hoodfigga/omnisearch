@@ -1,6 +1,7 @@
 // OmniSearch — Universal File & Everything Discovery Client
 
 let currentResults = [];
+let visibleResults = [];
 let currentQuery = '';
 let currentMetrics = null;
 
@@ -16,8 +17,8 @@ async function initSources() {
     if (res.ok) {
       const sources = await res.json();
       container.innerHTML = sources.map(s => `
-        <label class="checkbox-chip">
-          <input type="checkbox" name="source" value="${s.id}" checked>
+        <label class="checkbox-chip${s.enabled ? '' : ' source-disabled'}" title="${s.enabled ? '' : 'Source disabled via configuration'}">
+          <input type="checkbox" name="source" value="${s.id}" ${s.enabled ? 'checked' : 'disabled'}>
           <span>${escapeHtml(s.name)}</span>
         </label>
       `).join('');
@@ -114,6 +115,8 @@ function applyClientFiltersAndRender(data) {
   } else if (categoryFilter) {
     filtered = currentResults.filter(r => r.item_type === categoryFilter);
   }
+  // Keep the visible set in sync so exports respect the active filter.
+  visibleResults = filtered;
 
   const renderData = {
     query: currentQuery,
@@ -167,6 +170,7 @@ function renderResults(data) {
       <div>Deduplicated: <span class="metric-highlight">${metrics.duplicates_filtered || 0}</span></div>
       <div>Time: <span class="metric-highlight">${metrics.duration_ms || 0} ms</span></div>
       <div>Sources: <span class="metric-highlight">${(metrics.sources_contacted || []).length} active</span></div>
+      ${metrics.stopping_reason && metrics.stopping_reason !== 'completed' ? `<div class="metric-warn">Stopped: ${escapeHtml(metrics.stopping_reason)}</div>` : ''}
     </div>
     <div>
       <span style="font-size: 0.8rem; color: var(--text-muted);">Mode: ${escapeHtml(data.match_mode || '')}</span>
@@ -348,21 +352,23 @@ function closeModal() {
 }
 
 function exportJSON() {
-  if (currentResults.length === 0) {
+  const rows = visibleResults.length > 0 || currentResults.length === 0 ? visibleResults : currentResults;
+  if (rows.length === 0) {
     alert('No results to export.');
     return;
   }
-  const blob = new Blob([JSON.stringify(currentResults, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' });
   downloadBlob(blob, `omnisearch-${sanitizeFilename(currentQuery)}.json`);
 }
 
 function exportCSV() {
-  if (currentResults.length === 0) {
+  const rows = visibleResults.length > 0 || currentResults.length === 0 ? visibleResults : currentResults;
+  if (rows.length === 0) {
     alert('No results to export.');
     return;
   }
   const headers = ['Rank', 'Title', 'Platform', 'Type', 'Extension', 'Size', 'Download URL', 'Canonical URL', 'Score'];
-  const rows = currentResults.map((item, idx) => [
+  const csvRows = rows.map((item, idx) => [
     idx + 1,
     `"${(item.title || item.file_name || '').replace(/"/g, '""')}"`,
     `"${(item.platform || '').replace(/"/g, '""')}"`,
@@ -374,7 +380,7 @@ function exportCSV() {
     item.relevance_score || 0
   ]);
 
-  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const csvContent = [headers.join(','), ...csvRows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   downloadBlob(blob, `omnisearch-${sanitizeFilename(currentQuery)}.csv`);
 }

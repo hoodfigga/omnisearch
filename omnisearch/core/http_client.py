@@ -72,20 +72,21 @@ class TokenBucketRateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self):
-        async with self._lock:
-            now = time.monotonic()
-            elapsed = now - self.last_update
-            self.last_update = now
-            self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+        while True:
+            wait_time = 0.0
+            async with self._lock:
+                now = time.monotonic()
+                elapsed = now - self.last_update
+                self.last_update = now
+                self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
 
-            if self.tokens < 1.0:
-                needed = 1.0 - self.tokens
-                wait_time = needed / self.rate
-                await asyncio.sleep(wait_time)
-                self.tokens = 0.0
-                self.last_update = time.monotonic()
-            else:
-                self.tokens -= 1.0
+                if self.tokens >= 1.0:
+                    self.tokens -= 1.0
+                    return
+                wait_time = (1.0 - self.tokens) / self.rate
+            # Sleep OUTSIDE the lock so concurrent requests on this client
+            # are not serialized behind a single sleeping waiter.
+            await asyncio.sleep(wait_time)
 
 
 class ResilientHttpClient:
@@ -132,6 +133,31 @@ class ResilientHttpClient:
         safe_only: bool = False,
     ) -> httpx.Response:
         """Performs a GET request with rate limiting and exponential backoff on transient errors."""
+        return await self._request("GET", url, params=params, headers=headers, timeout=timeout, safe_only=safe_only)
+
+    async def post(
+        self,
+        url: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+        safe_only: bool = False,
+    ) -> httpx.Response:
+        """Performs a POST request with rate limiting and exponential backoff on transient errors."""
+        return await self._request("POST", url, params=params, data=data, headers=headers, timeout=timeout, safe_only=safe_only)
+
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        params: Optional[Dict[str, Any]] = None,
+        data: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+        safe_only: bool = False,
+    ) -> httpx.Response:
+        """Core request loop with rate limiting, retries, and SSRF-safe redirect handling."""
         client = await self.get_client()
         last_exception: Optional[Exception] = None
         current_url = url
@@ -147,9 +173,11 @@ class ResilientHttpClient:
                 await self.rate_limiter.acquire()
                 try:
                     t = timeout or self.timeout
-                    resp = await client.get(
+                    resp = await client.request(
+                        method,
                         current_url,
                         params=params if redirect_count == 0 else None,
+                        data=data if redirect_count == 0 else None,
                         headers=headers,
                         timeout=t,
                         follow_redirects=not safe_only,

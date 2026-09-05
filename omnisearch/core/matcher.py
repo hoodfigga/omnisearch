@@ -5,6 +5,8 @@ Zero assumptions or alterations in EXACT_MATCH mode.
 """
 
 from __future__ import annotations
+import math
+import re
 from typing import Dict, List, Optional, Set, Tuple
 from omnisearch.models.query import (
     ASTNode,
@@ -76,9 +78,24 @@ class MatchEngine:
 
         if ast:
             eval_result = cls._evaluate_node(ast, target_fields, options, default_field=None)
-            if not eval_result.is_match:
+            if eval_result.is_match:
+                all_spans = eval_result.spans
+            elif options.match_mode == MatchMode.FLEXIBLE_MATCH and query.extracted_terms:
+                # FLEXIBLE_MATCH relaxation: strict AND/OR failed — accept items
+                # matching at least half of the positive query terms.
+                salvage_spans: List[MatchSpan] = []
+                for term in query.extracted_terms:
+                    salvage_spans.extend(cls._match_term(term, target_fields, options))
+                for phrase in query.extracted_phrases:
+                    salvage_spans.extend(cls._match_phrase(phrase, target_fields, options))
+                matched_terms = {s.term for s in salvage_spans}
+                required = max(1, math.ceil(len(set(query.extracted_terms)) * 0.5))
+                if len(matched_terms) >= required:
+                    all_spans = salvage_spans
+                else:
+                    return False, None
+            else:
                 return False, None
-            all_spans = eval_result.spans
         else:
             # Fallback if no AST
             matched = False
@@ -186,7 +203,16 @@ class MatchEngine:
         if not term:
             return spans
 
-        regex = build_word_boundary_regex(term, exact_phrase=False, case_insensitive=True)
+        # Domain-like terms (site:mediafire.com) must match as contiguous
+        # phrases, not word-by-word tokens ("mediafire", "com").
+        is_domainish = specific_field == "site" or (
+            specific_field is None and re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", term, re.I)
+        )
+        regex = (
+            build_word_boundary_regex(term, exact_phrase=True, case_insensitive=True)
+            if is_domainish
+            else build_word_boundary_regex(term, exact_phrase=False, case_insensitive=True)
+        )
         allow_stemming = options.match_mode == MatchMode.SEMANTIC_EXPANSION
 
         fields_to_check = {specific_field: target_fields.get(specific_field, "")} if specific_field else target_fields

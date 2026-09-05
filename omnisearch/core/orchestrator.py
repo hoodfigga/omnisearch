@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import timezone
 from typing import Any, Dict, List, Optional, Tuple
 from omnisearch.models.query import (
     MatchMode,
@@ -34,6 +35,29 @@ from omnisearch.adapters.adult_web import AdultVideoNetworkAdapter
 from omnisearch.adapters.file_hosts import FileHostingAdapter
 
 logger = logging.getLogger(__name__)
+
+
+def cls_filter_candidate(record: VideoRecord, opts: SearchOptions) -> bool:
+    """Applies structured filters (dates, duration, language) before text matching."""
+    if opts.published_after or opts.published_before:
+        pub = record.publication_date
+        if pub is None:
+            return False
+        if pub.tzinfo is None:
+            pub = pub.replace(tzinfo=timezone.utc)
+        if opts.published_after and pub < opts.published_after:
+            return False
+        if opts.published_before and pub > opts.published_before:
+            return False
+    if opts.min_duration_seconds is not None:
+        if record.duration_seconds is None or record.duration_seconds < opts.min_duration_seconds:
+            return False
+    if opts.max_duration_seconds is not None:
+        if record.duration_seconds is None or record.duration_seconds > opts.max_duration_seconds:
+            return False
+    if opts.language and record.language and record.language.lower() != opts.language.lower():
+        return False
+    return True
 
 
 class VideoDiscoveryOrchestrator:
@@ -100,20 +124,33 @@ class VideoDiscoveryOrchestrator:
 
         # Select target adapters
         target_adapter_ids = opts.sources if opts.sources else list(self.adapters.keys())
+        unknown_ids = [sid for sid in target_adapter_ids if sid not in self.adapters]
+        if unknown_ids:
+            logger.warning("Unknown source ids in request (ignored): %s", ", ".join(unknown_ids))
         active_adapters = [self.adapters[sid] for sid in target_adapter_ids if sid in self.adapters and self.adapters[sid].is_enabled]
 
         sources_contacted: List[str] = []
         all_candidates: List[VideoRecord] = []
         errors: Dict[str, str] = {}
+
+        # Overall deadline: timeout_seconds bounds the ENTIRE multi-source
+        # search, not each individual page fetch.
+        deadline = start_time + opts.timeout_seconds
         stopping_reason = "completed"
 
         # Bounded concurrency fetch across all sources
         tasks = [
-            self._fetch_source_with_pagination(adapter, query, opts.max_pages_per_source, opts.timeout_seconds)
+            self._fetch_source_with_pagination(
+                adapter, query, opts.max_pages_per_source, opts.timeout_seconds, deadline
+            )
             for adapter in active_adapters
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Per-source result cap: keep the pipeline tractable for sources that
+        # return hundreds of records (open directories, album extractors).
+        per_source_cap = max(50, opts.max_results * 3)
 
         for adapter, result in zip(active_adapters, results):
             sources_contacted.append(adapter.source_name)
@@ -122,6 +159,8 @@ class VideoDiscoveryOrchestrator:
                 errors[adapter.source_name] = str(result)
             elif isinstance(result, tuple):
                 records, err = result
+                if len(records) > per_source_cap:
+                    records = records[:per_source_cap]
                 all_candidates.extend(records)
                 if err:
                     errors[adapter.source_name] = err
@@ -129,6 +168,8 @@ class VideoDiscoveryOrchestrator:
         # Match Evaluation and Provenance Enrichment
         matched_records: List[VideoRecord] = []
         for candidate in all_candidates:
+            if not cls_filter_candidate(candidate, opts):
+                continue
             is_match, provenance = MatchEngine.evaluate(candidate, query)
             if is_match and provenance:
                 candidate.provenance = provenance
@@ -139,10 +180,17 @@ class VideoDiscoveryOrchestrator:
 
         # Multi-factor Ranking
         ranked_records = RelevanceRanker.rank_records(deduped_records, query)
+
+        # Apply minimum relevance score threshold
+        if opts.min_score and opts.min_score > 0:
+            ranked_records = [r for r in ranked_records if r.relevance_score >= opts.min_score]
+
         final_results = ranked_records[: opts.max_results] if (opts.max_results and len(ranked_records) > opts.max_results) else ranked_records
 
         # Duration & Metrics
         duration_ms = (time.monotonic() - start_time) * 1000.0
+        if time.monotonic() > deadline:
+            stopping_reason = "deadline_reached"
         metrics = SearchMetrics(
             query=query_str,
             duration_ms=round(duration_ms, 2),
@@ -174,6 +222,7 @@ class VideoDiscoveryOrchestrator:
         query: SearchQuery,
         max_pages: int,
         timeout: float,
+        deadline: Optional[float] = None,
     ) -> Tuple[List[VideoRecord], Optional[str]]:
         """Fetches multiple pages for a single source adapter up to max_pages."""
         candidates: List[VideoRecord] = []
@@ -181,13 +230,20 @@ class VideoDiscoveryOrchestrator:
 
         async with self.semaphore:
             for page in range(1, max_pages + 1):
+                if deadline is not None and time.monotonic() >= deadline:
+                    err_msg = err_msg or f"Skipped page {page}: overall deadline reached"
+                    break
+                # Remaining time budget for this page
+                page_timeout = timeout
+                if deadline is not None:
+                    page_timeout = max(0.5, min(timeout, deadline - time.monotonic()))
                 try:
-                    records = await asyncio.wait_for(adapter.search(query, page=page), timeout=timeout)
+                    records = await asyncio.wait_for(adapter.search(query, page=page), timeout=page_timeout)
                     if not records:
                         break
                     candidates.extend(records)
                 except asyncio.TimeoutError:
-                    err_msg = f"Timed out after {timeout}s on page {page}"
+                    err_msg = f"Timed out after {page_timeout:.1f}s on page {page}"
                     break
                 except Exception as exc:
                     err_msg = str(exc)

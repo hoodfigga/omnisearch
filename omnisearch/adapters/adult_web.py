@@ -7,6 +7,7 @@ YouPorn, Tube8, Motherless, and uncensored video networks) without content filte
 from __future__ import annotations
 import asyncio
 import logging
+import os
 import re
 from typing import List, Optional, Set
 from urllib.parse import quote_plus
@@ -24,6 +25,11 @@ logger = logging.getLogger(__name__)
 class AdultVideoNetworkAdapter(BaseSourceAdapter):
     """Discovers videos across adult and uncensored video networks via public search endpoints and album extractors."""
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Toggleable: enabled by default; set OMNISEARCH_ADULT_ENABLED=0 to disable.
+        self._enabled = os.getenv("OMNISEARCH_ADULT_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+
     @property
     def source_id(self) -> str:
         return "adult_web"
@@ -31,6 +37,10 @@ class AdultVideoNetworkAdapter(BaseSourceAdapter):
     @property
     def source_name(self) -> str:
         return "Explicit Content"
+
+    @property
+    def is_enabled(self) -> bool:
+        return self._enabled
 
     async def search(self, query: SearchQuery, page: int = 1) -> List[VideoRecord]:
         search_terms = " ".join(query.extracted_phrases + query.extracted_terms) or query.raw_query

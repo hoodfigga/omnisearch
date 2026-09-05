@@ -28,8 +28,8 @@ def open_browser(url: str):
 
 
 def main():
-    host = "0.0.0.0"
-    port = 8000
+    host = os.getenv("OMNISEARCH_HOST", "0.0.0.0")
+    port = int(os.getenv("OMNISEARCH_PORT", "8000"))
     local_url = f"http://localhost:{port}"
     api_docs = f"http://localhost:{port}/docs"
 
