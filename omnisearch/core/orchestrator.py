@@ -40,6 +40,14 @@ from omnisearch.adapters.library_media import OpenLibraryAdapter, WikimediaCommo
 from omnisearch.adapters.openverse import OpenverseAdapter
 from omnisearch.adapters.torrents import NyaaAdapter
 from omnisearch.adapters.registries import RegistryAdapter
+from omnisearch.adapters.forges import GitLabAdapter, CodebergAdapter
+from omnisearch.adapters.gaming import ModrinthAdapter, SteamAdapter, ItchIoAdapter
+from omnisearch.adapters.music_media import ITunesAdapter, MixcloudAdapter
+from omnisearch.adapters.communities import HackerNewsAdapter, StackExchangeAdapter
+from omnisearch.adapters.academic import (
+    ZenodoAdapter, ArxivAdapter, EuropePMCAdapter, DoajAdapter,
+    CrossrefAdapter, SemanticScholarAdapter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +116,19 @@ class VideoDiscoveryOrchestrator:
             OpenverseAdapter(),
             NyaaAdapter(),
             RegistryAdapter(),
+            GitLabAdapter(),
+            CodebergAdapter(),
+            ModrinthAdapter(),
+            SteamAdapter(),
+            ItchIoAdapter(),
+            ITunesAdapter(),
+            MixcloudAdapter(),
+            HackerNewsAdapter(),
+            StackExchangeAdapter(),
+            EuropePMCAdapter(),
+            DoajAdapter(),
+            CrossrefAdapter(),
+            SemanticScholarAdapter(),
         ]
         for adapter in default_adapters:
             self.register_adapter(adapter)

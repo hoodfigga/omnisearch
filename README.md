@@ -98,7 +98,15 @@ Equipped with an AST-driven query parser, strict word-boundary matching, an auto
 | **Openverse** | CC-licensed images & audio aggregated from 20+ providers | Images, Audio |
 | **Nyaa / Sukebei** | Torrents via RSS: direct `.torrent` files, seeders, infoHash | Software, Anime, Data, Adult |
 | **npm / crates.io** | Package pages + direct tarball downloads (`.tgz` / `.crate`) | Software Packages |
-| **Explicit Content** | Tagged explicit networks with a toggleable filter (`OMNISEARCH_ADULT_ENABLED=0` disables) | Video & Media |
+| **Explicit Content** | XVideos, XHamster, PornTrex, EroMe, Eporner, RedTube, SpankBang, YouPorn — tagged explicit network with a toggleable filter (`OMNISEARCH_ADULT_ENABLED=0` disables) | Video & Media |
+| **GitLab / Codeberg** | Repo search + git clone URLs | Source Code |
+| **Modrinth** | Minecraft mods, plugins & resource packs | Software |
+| **Steam / itch.io** | Game store & indie game search | Software, Games |
+| **Apple iTunes** | Music & podcasts with 30s audio previews | Audio |
+| **Mixcloud** | DJ mixes & radio shows with stream embeds | Audio |
+| **Hacker News / StackExchange** | Tech stories, discussions & Q&A (SO, SuperUser, Unix, AskUbuntu) | Web Pages |
+| **EuropePMC / DOAJ / Crossref / Semantic Scholar** | Biomedical literature, open-access articles, scholarly works & DOIs, AI paper search | Papers, Documents |
+| **RubyGems / Packagist / NuGet / AUR / Docker Hub** | Ruby, PHP, .NET, Arch Linux packages & container images (direct .gem/.nupkg/tarball downloads) | Software Packages |
 
 ---
 
@@ -125,7 +133,7 @@ Configuration via environment variables:
 This starts the Uvicorn web server and opens the discovery dashboard:
 ```
 ======================================================================
-  🚀 OmniSearch Universal Discovery Engine v2.3.0
+  🚀 OmniSearch Universal Discovery Engine v2.4.0
 ======================================================================
   🌐 Live Dashboard:  http://localhost:8000
   📡 API Docs:        http://localhost:8000/docs
@@ -239,7 +247,7 @@ OmniSearch includes a comprehensive test suite:
 .venv/bin/pytest -v
 ```
 
-Verified test coverage (122 tests):
+Verified test coverage (144 tests):
 - SSRF security protection rejecting private LANs, link-local, loopback, and cloud metadata (169.254.169.254)
 - Deterministic cache key generation (no collision across filters) and LRU capacity eviction
 - Async application lifespan with complete HTTP connection pool teardown
@@ -267,6 +275,13 @@ Verified test coverage (122 tests):
   timeout-aware cache keys, deadline-truncated responses never cached,
   ConnectTimeout/WriteTimeout retried via TransportError, single-parse
   (lxml) HTML extraction pipeline, concurrent SearXNG querying
+- v2.4 sources: 15 new live-verified adapters — GitLab, Codeberg, Modrinth,
+  Steam, itch.io, iTunes, Mixcloud, Hacker News, StackExchange (4 sites),
+  EuropePMC, DOAJ, Crossref, Semantic Scholar, +5 registries (RubyGems,
+  Packagist, NuGet, AUR, Docker Hub); adult category rebuilt around
+  XVideos/XHamster/PornTrex (live HTML parsers w/ duration, views, uploader,
+  preview clips) plus the original EroMe/Eporner/RedTube/SpankBang/YouPorn,
+  each failure-tolerant
 
 ---
 
@@ -325,7 +340,7 @@ Verified test coverage (122 tests):
 │           ├── index.html        # Clean discovery dashboard
 │           ├── style.css         # Modern list view CSS design system
 │           └── app.js            # Interactive client with search highlights
-├── tests/                        # Full automated test suite (122 tests)
+├── tests/                        # Full automated test suite (144 tests)
 ├── assets/
 │   └── logo.jpg                  # OmniSearch logo
 ├── pyproject.toml

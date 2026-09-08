@@ -1,7 +1,12 @@
 """
 Uncensored & Adult Video Network Adapter.
-Searches major public adult video platforms (EroMe albums, Eporner API, RedTube API, SpankBang,
-YouPorn, Tube8, Motherless, and uncensored video networks) without content filtering or censorship.
+Searches major public adult video platforms (XVideos, XHamster, PornTrex,
+EroMe albums, Eporner API, RedTube API, SpankBang, YouPorn) without content
+filtering or censorship.
+
+Each source is independent and failure-tolerant: sites that are unreachable
+from a given network (adult CDNs are frequently geo/bot-blocked) simply
+return empty and the rest continue.
 """
 
 from __future__ import annotations
@@ -10,17 +15,66 @@ import logging
 import os
 import re
 from typing import List, Optional, Set
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urljoin
 from bs4 import BeautifulSoup
 
 from omnisearch.models.query import SearchQuery
-from omnisearch.models.video import VideoMetadataSource, VideoRecord
+from omnisearch.models.video import VideoMetadataSource, VideoRecord, ItemType
 from omnisearch.adapters.base import BaseSourceAdapter
 from omnisearch.extractors.json_ld import parse_iso_datetime
 from omnisearch.extractors.page_extractor import PageExtractor
 from omnisearch.parsing import make_soup
 
 logger = logging.getLogger(__name__)
+
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/",
+}
+
+
+def _parse_duration(text: str) -> Optional[int]:
+    """Parses '26 min', '1:23:45', '12:34' into seconds."""
+    if not text:
+        return None
+    text = text.strip().lower()
+    m = re.match(r"^(\d+)\s*(sec|second|seconds|min|minute|minutes|hr|hour|hours|h|m|s)$", text)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        if unit.startswith(("sec", "s")):
+            return n
+        if unit.startswith(("hr", "h")):
+            return n * 3600
+        return n * 60
+    if ":" in text:
+        parts = text.split(":")
+        try:
+            if len(parts) == 2:
+                return int(parts[0]) * 60 + int(parts[1])
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_views(text: str) -> Optional[int]:
+    """Parses '2.1M', '843k', '1,234' into an int."""
+    if not text:
+        return None
+    t = text.strip().lower().replace(",", "").replace(" ", "")
+    m = re.match(r"^(\d+(?:\.\d+)?)([km]?)$", t)
+    if not m:
+        try:
+            return int(t)
+        except ValueError:
+            return None
+    n = float(m.group(1))
+    mult = {"k": 1_000, "m": 1_000_000}.get(m.group(2), 1)
+    return int(n * mult)
 
 
 class AdultVideoNetworkAdapter(BaseSourceAdapter):
@@ -48,10 +102,13 @@ class AdultVideoNetworkAdapter(BaseSourceAdapter):
         if not search_terms.strip():
             return []
 
-        records: List[VideoRecord] = []
-
-        # Run multi-platform search tasks concurrently
+        # Run multi-platform search tasks concurrently. Each source is
+        # failure-tolerant: adult CDNs are frequently geo/bot-blocked, so a
+        # dead source returns [] and the rest still contribute.
         tasks = [
+            self._search_xvideos(search_terms, page),
+            self._search_xhamster(search_terms, page),
+            self._search_porntrex(search_terms, page),
             self._search_erome(search_terms),
             self._search_eporner(search_terms, page),
             self._search_redtube(search_terms, page),
@@ -60,10 +117,199 @@ class AdultVideoNetworkAdapter(BaseSourceAdapter):
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
+        records: List[VideoRecord] = []
         for res in results:
             if isinstance(res, list):
                 records.extend(res)
 
+        return records
+
+    # ------------------------------------------------------------------ XVideos
+
+    async def _search_xvideos(self, search_terms: str, page: int) -> List[VideoRecord]:
+        """XVideos HTML search: thumb-block cards with title, duration, views, uploader."""
+        records: List[VideoRecord] = []
+        try:
+            resp = await self.http_client.get(
+                "https://www.xvideos.com/",
+                params={"k": search_terms, "p": page},
+                headers=BROWSER_HEADERS,
+                timeout=8.0,
+            )
+            if resp.status_code != 200:
+                return records
+            soup = make_soup(resp.text)
+
+            for block in soup.select("div.thumb-block"):
+                a = block.select_one("p.title a[href]") or block.select_one("a[href^='/video']")
+                if not a:
+                    continue
+                href = a.get("href", "")
+                if not href:
+                    continue
+                video_url = href if href.startswith("http") else f"https://www.xvideos.com{href}"
+                vid_id = block.get("data-id") or href.rstrip("/").split("/")[-1]
+
+                title = a.get("title") or a.get_text().strip()
+                # Strip the trailing duration span inside the title anchor
+                dur_el = block.select_one("p.title .duration") or block.select_one(".duration")
+                duration = _parse_duration(dur_el.get_text().strip()) if dur_el else None
+
+                # Metadata line: uploader name + view count
+                uploader = None
+                views = None
+                name_el = block.select_one("p.metadata .name")
+                if name_el:
+                    uploader = name_el.get_text().strip()
+                meta_text = block.select_one("p.metadata").get_text() if block.select_one("p.metadata") else ""
+                views_m = re.search(r"([\d.,]+\s*[KkMm]?)\s*Views", meta_text)
+                if views_m:
+                    views = _parse_views(views_m.group(1))
+
+                img = block.select_one("img")
+                thumb = (img.get("data-src") or img.get("src")) if img else None
+                # HD preview clip embedded in data attributes
+                preview = img.get("data-pvv") if img else None
+
+                records.append(
+                    VideoRecord(
+                        id=f"xvideos:{vid_id}",
+                        canonical_url=video_url,
+                        download_url=None,
+                        platform="XVideos",
+                        platform_id=str(vid_id),
+                        title=title,
+                        description=f"XVideos video by {uploader or 'unknown'}"
+                        + (f" — {views:,} views" if views else ""),
+                        item_type=ItemType.VIDEO,
+                        duration_seconds=duration,
+                        view_count=views,
+                        uploader_name=uploader,
+                        thumbnail_url=thumb,
+                        embed_url=preview,  # mp4 preview clip
+                        tags=["adult", "xvideos"],
+                        metadata_sources=[VideoMetadataSource.HTML_META],
+                        raw_metadata={"xvideos_id": vid_id},
+                    )
+                )
+        except Exception as exc:
+            logger.debug("XVideos search failed: %s", exc)
+        return records
+
+    # ------------------------------------------------------------------ XHamster
+
+    async def _search_xhamster(self, search_terms: str, page: int) -> List[VideoRecord]:
+        """XHamster HTML search: video-thumb cards with duration, rating, preview clip."""
+        records: List[VideoRecord] = []
+        try:
+            resp = await self.http_client.get(
+                f"https://xhamster.com/search/{quote_plus(search_terms)}",
+                params={"page": page},
+                headers=BROWSER_HEADERS,
+                timeout=8.0,
+            )
+            if resp.status_code != 200:
+                return records
+            soup = make_soup(resp.text)
+
+            for thumb in soup.select("div.video-thumb"):
+                a = thumb.select_one("a.video-thumb__image-container, a[data-role='thumb-link'], a[href*='/videos/']")
+                if not a:
+                    continue
+                href = a.get("href", "")
+                if not href or "/videos/" not in href:
+                    continue
+                video_url = href if href.startswith("http") else f"https://xhamster.com{href}"
+                vid_id = thumb.get("data-video-id") or href.rstrip("/").split("-")[-1]
+
+                title = a.get("aria-label") or ""
+                if not title:
+                    t_el = thumb.select_one(".video-thumb__title, .thumb-title")
+                    title = t_el.get_text().strip() if t_el else ""
+
+                dur_el = thumb.select_one("[data-role='video-duration-container']")
+                duration = _parse_duration(dur_el.get_text().strip()) if dur_el else None
+
+                img = thumb.select_one("img")
+                thumb_url = (img.get("src") or img.get("data-src")) if img else None
+                preview = a.get("data-previewvideo-fallback") or a.get("data-previewvideo")
+
+                records.append(
+                    VideoRecord(
+                        id=f"xhamster:{vid_id}",
+                        canonical_url=video_url,
+                        download_url=None,
+                        platform="XHamster",
+                        platform_id=str(vid_id),
+                        title=title or f"XHamster video {vid_id}",
+                        description="XHamster video",
+                        item_type=ItemType.VIDEO,
+                        duration_seconds=duration,
+                        thumbnail_url=thumb_url,
+                        embed_url=preview,  # mp4 preview clip
+                        tags=["adult", "xhamster"],
+                        metadata_sources=[VideoMetadataSource.HTML_META],
+                        raw_metadata={"xhamster_id": vid_id},
+                    )
+                )
+        except Exception as exc:
+            logger.debug("XHamster search failed: %s", exc)
+        return records
+
+    # ------------------------------------------------------------------ PornTrex
+
+    async def _search_porntrex(self, search_terms: str, page: int) -> List[VideoRecord]:
+        """PornTrex HTML search: video-item cards with cover, alt title, screenshots."""
+        records: List[VideoRecord] = []
+        try:
+            resp = await self.http_client.get(
+                f"https://www.porntrex.com/search/{quote_plus(search_terms)}/{page}/",
+                headers=BROWSER_HEADERS,
+                timeout=8.0,
+            )
+            if resp.status_code != 200:
+                return records
+            soup = make_soup(resp.text)
+
+            for item in soup.select("div.video-item"):
+                a = item.select_one("a.thumb, a[href*='/video/']")
+                if not a:
+                    continue
+                href = a.get("href", "")
+                if not href:
+                    continue
+                video_url = href if href.startswith("http") else f"https://www.porntrex.com{href}"
+                vid_id = item.get("data-item-id") or href.rstrip("/").split("/")[-2]
+
+                img = item.select_one("img.cover, img")
+                title = (img.get("alt") or "").strip() if img else ""
+                thumb = (img.get("data-src") or img.get("src")) if img else None
+                if thumb and thumb.startswith("//"):
+                    thumb = f"https:{thumb}"
+
+                # Duration occasionally sits in a badge next to the thumb
+                dur_el = item.select_one(".duration, .time, em")
+                duration = _parse_duration(dur_el.get_text().strip()) if dur_el else None
+
+                records.append(
+                    VideoRecord(
+                        id=f"porntrex:{vid_id}",
+                        canonical_url=video_url,
+                        download_url=None,
+                        platform="PornTrex",
+                        platform_id=str(vid_id),
+                        title=title or f"PornTrex video {vid_id}",
+                        description="PornTrex video",
+                        item_type=ItemType.VIDEO,
+                        duration_seconds=duration,
+                        thumbnail_url=thumb,
+                        tags=["adult", "porntrex"],
+                        metadata_sources=[VideoMetadataSource.HTML_META],
+                        raw_metadata={"porntrex_id": vid_id},
+                    )
+                )
+        except Exception as exc:
+            logger.debug("PornTrex search failed: %s", exc)
         return records
 
     async def _search_erome(self, search_terms: str) -> List[VideoRecord]:

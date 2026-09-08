@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="OmniSearch Discovery Engine",
     description="Universal file, software, document, media, cyberlocker, and direct download discovery engine.",
-    version="2.3.0",
+    version="2.4.0",
     lifespan=lifespan,
 )
 
