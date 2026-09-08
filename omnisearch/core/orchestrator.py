@@ -52,9 +52,17 @@ def cls_filter_candidate(record: VideoRecord, opts: SearchOptions) -> bool:
             return False
         if pub.tzinfo is None:
             pub = pub.replace(tzinfo=timezone.utc)
-        if opts.published_after and pub < opts.published_after:
+        # Normalize filter bounds too: CLI --after 2025-01-01 produces naive
+        # datetimes which would otherwise raise TypeError on comparison.
+        after = opts.published_after
+        if after is not None and after.tzinfo is None:
+            after = after.replace(tzinfo=timezone.utc)
+        before = opts.published_before
+        if before is not None and before.tzinfo is None:
+            before = before.replace(tzinfo=timezone.utc)
+        if after and pub < after:
             return False
-        if opts.published_before and pub > opts.published_before:
+        if before and pub > before:
             return False
     if opts.min_duration_seconds is not None:
         if record.duration_seconds is None or record.duration_seconds < opts.min_duration_seconds:
@@ -226,8 +234,10 @@ class VideoDiscoveryOrchestrator:
             metrics=metrics,
         )
 
-        # Cache response
-        if opts.allow_cache:
+        # Cache response — but never cache deadline-truncated results: they
+        # are incomplete by definition and would mask fuller results for the
+        # duration of the TTL.
+        if opts.allow_cache and stopping_reason != "deadline_reached":
             self.cache.set(cache_key, response, ttl_seconds=opts.cache_ttl_seconds)
 
         return response

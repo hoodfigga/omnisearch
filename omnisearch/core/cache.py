@@ -55,6 +55,9 @@ class SearchCache:
             "max_dur": opts.max_duration_seconds,
             "pub_after": opts.published_after.isoformat() if opts.published_after else None,
             "pub_before": opts.published_before.isoformat() if opts.published_before else None,
+            # A response gathered under a 5s deadline differs materially from
+            # one gathered under 120s — do not serve one for the other.
+            "timeout": opts.timeout_seconds,
         }
         serialized = json.dumps(key_dict, sort_keys=True)
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()

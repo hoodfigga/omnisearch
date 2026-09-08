@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup
 
 from omnisearch.models.video import ItemRecord, ItemType, MetadataSource
 from omnisearch.core.dedup import resolve_platform_and_id, normalize_url
+from omnisearch.parsing import make_soup
 
 
 KNOWN_EXTENSIONS = {
@@ -54,26 +55,56 @@ KNOWN_EXTENSIONS = {
     "torrent": ItemType.FILE,
 }
 
-FILE_HOST_DOMAINS = {
-    "mediafire": re.compile(r"mediafire\.com", re.I),
-    "mega": re.compile(r"mega\.(?:nz|io)", re.I),
-    "rapidgator": re.compile(r"rapidgator\.net", re.I),
-    "1fichier": re.compile(r"1fichier\.com", re.I),
-    "turbobit": re.compile(r"turbobit\.net", re.I),
-    "nitroflare": re.compile(r"nitroflare\.com", re.I),
-    "ddownload": re.compile(r"ddownload\.com", re.I),
-    "katfile": re.compile(r"katfile\.com", re.I),
-    "pixeldrain": re.compile(r"pixeldrain\.com", re.I),
-    "gofile": re.compile(r"gofile\.io", re.I),
-    "krakenfiles": re.compile(r"krakenfiles\.com", re.I),
-    "catbox": re.compile(r"(?:files\.)?catbox\.moe|litterbox\.catbox\.moe", re.I),
-    "tmpfiles": re.compile(r"tmpfiles\.org", re.I),
-    "cyberfile": re.compile(r"cyberfile\.[a-z]+|cyberdrop\.[a-z]+|saint2\.[a-z]+", re.I),
-    "bunkr": re.compile(r"bunkr\.[a-z]+|bunkrr\.[a-z]+|bunker\.[a-z]+", re.I),
-    "gdrive": re.compile(r"drive\.google\.com", re.I),
-    "dropbox": re.compile(r"dropbox\.com", re.I),
-    "workupload": re.compile(r"workupload\.com", re.I),
+# Exact registrable-domain suffixes: the host must equal the suffix or be a
+# subdomain of it ("www.mediafire.com" yes, "mediafire.com.evil.io" NO).
+FILE_HOST_DOMAIN_SUFFIXES: Dict[str, Tuple[str, ...]] = {
+    "mediafire": ("mediafire.com",),
+    "mega": ("mega.nz", "mega.io"),
+    "rapidgator": ("rapidgator.net",),
+    "1fichier": ("1fichier.com",),
+    "turbobit": ("turbobit.net",),
+    "nitroflare": ("nitroflare.com",),
+    "ddownload": ("ddownload.com",),
+    "katfile": ("katfile.com",),
+    "pixeldrain": ("pixeldrain.com",),
+    "gofile": ("gofile.io",),
+    "krakenfiles": ("krakenfiles.com",),
+    "catbox": ("catbox.moe",),
+    "tmpfiles": ("tmpfiles.org",),
+    "gdrive": ("drive.google.com",),
+    "dropbox": ("dropbox.com",),
+    "workupload": ("workupload.com",),
 }
+
+# Mirror families that rotate their TLD (bunkr.cr / bunkr.is / bunkrr.su …).
+# Anchored so the family label must be its own host label:
+# "debunkr.com" or "mymediafire.com" can never match.
+FILE_HOST_DOMAIN_REGEXES: Dict[str, "re.Pattern[str]"] = {
+    "cyberfile": re.compile(r"^(?:[a-z0-9-]+\.)*(?:cyberfile|cyberdrop|saint2)\.[a-z]{2,}$", re.I),
+    "bunkr": re.compile(r"^(?:[a-z0-9-]+\.)*(?:bunkr|bunkrr|bunker)\.[a-z]{2,}$", re.I),
+}
+
+
+def resolve_file_host_key(url: str) -> Optional[str]:
+    """Returns the file-host key for a URL's host, or None for non-file-hosts.
+
+    Host-boundary anchored: 'debunkr.com' is NOT Bunkr and
+    'mediafire.com.evil.io' is NOT MediaFire.
+    """
+    try:
+        host = (urlparse(url).hostname or "").lower().strip(".")
+    except Exception:
+        return None
+    if not host:
+        return None
+    for key, suffixes in FILE_HOST_DOMAIN_SUFFIXES.items():
+        for suffix in suffixes:
+            if host == suffix or host.endswith("." + suffix):
+                return key
+    for key, pattern in FILE_HOST_DOMAIN_REGEXES.items():
+        if pattern.match(host):
+            return key
+    return None
 
 
 def detect_file_extension(filename_or_url: str) -> Optional[str]:
@@ -162,88 +193,53 @@ class FileHostExtractor:
 
     @classmethod
     def is_file_host_url(cls, url: str) -> bool:
-        domain = urlparse(url).netloc.lower()
-        return any(pattern.search(domain) for pattern in FILE_HOST_DOMAINS.values())
+        return resolve_file_host_key(url) is not None
 
     @classmethod
-    def extract(cls, html_content: str, page_url: str) -> Optional[ItemRecord]:
+    def extract(
+        cls,
+        html_content: str,
+        page_url: str,
+        soup: Optional[BeautifulSoup] = None,
+    ) -> Optional[ItemRecord]:
         """Dispatches specialized extractors based on URL domain or page structure."""
         if not html_content:
             return None
 
         domain = urlparse(page_url).netloc.lower()
-        soup = BeautifulSoup(html_content, "html.parser")
+        soup = soup or make_soup(html_content)
+        host_key = resolve_file_host_key(page_url)
 
-        # 1. MediaFire
-        if FILE_HOST_DOMAINS["mediafire"].search(domain):
-            return cls._extract_mediafire(soup, page_url)
+        dispatch = {
+            "mediafire": cls._extract_mediafire,
+            "mega": cls._extract_mega,
+            "rapidgator": cls._extract_rapidgator,
+            "1fichier": cls._extract_1fichier,
+            "turbobit": cls._extract_generic_cyberlocker,
+            "nitroflare": cls._extract_generic_cyberlocker,
+            "ddownload": cls._extract_generic_cyberlocker,
+            "katfile": cls._extract_generic_cyberlocker,
+            "pixeldrain": cls._extract_pixeldrain,
+            "gofile": cls._extract_gofile,
+            "krakenfiles": cls._extract_krakenfiles,
+            "catbox": cls._extract_catbox,
+            "tmpfiles": cls._extract_tmpfiles,
+            "cyberfile": cls._extract_cyberfile,
+            "bunkr": cls._extract_bunkr,
+            "gdrive": cls._extract_google_drive,
+            "dropbox": cls._extract_dropbox,
+            "workupload": cls._extract_workupload,
+        }
 
-        # 2. MEGA
-        if FILE_HOST_DOMAINS["mega"].search(domain):
-            return cls._extract_mega(soup, page_url)
+        handler = dispatch.get(host_key) if host_key else None
+        if handler is not None:
+            return handler(soup, page_url)
 
-        # 3. Rapidgator
-        if FILE_HOST_DOMAINS["rapidgator"].search(domain):
-            return cls._extract_rapidgator(soup, page_url)
-
-        # 4. 1Fichier
-        if FILE_HOST_DOMAINS["1fichier"].search(domain):
-            return cls._extract_1fichier(soup, page_url)
-
-        # 5. Turbobit & Nitroflare & DDownload & Katfile
-        if (
-            FILE_HOST_DOMAINS["turbobit"].search(domain)
-            or FILE_HOST_DOMAINS["nitroflare"].search(domain)
-            or FILE_HOST_DOMAINS["ddownload"].search(domain)
-            or FILE_HOST_DOMAINS["katfile"].search(domain)
-        ):
-            return cls._extract_generic_cyberlocker(soup, page_url)
-
-        # 6. Pixeldrain
-        if FILE_HOST_DOMAINS["pixeldrain"].search(domain):
-            return cls._extract_pixeldrain(soup, page_url)
-
-        # 7. Gofile
-        if FILE_HOST_DOMAINS["gofile"].search(domain):
-            return cls._extract_gofile(soup, page_url)
-
-        # 8. Krakenfiles
-        if FILE_HOST_DOMAINS["krakenfiles"].search(domain):
-            return cls._extract_krakenfiles(soup, page_url)
-
-        # 9. Catbox & Litterbox
-        if FILE_HOST_DOMAINS["catbox"].search(domain):
-            return cls._extract_catbox(soup, page_url)
-
-        # 10. Tmpfiles
-        if FILE_HOST_DOMAINS["tmpfiles"].search(domain):
-            return cls._extract_tmpfiles(soup, page_url)
-
-        # 11. Cyberfile & Cyberdrop & Saint2
-        if FILE_HOST_DOMAINS["cyberfile"].search(domain):
-            return cls._extract_cyberfile(soup, page_url)
-
-        # 12. Bunkr (all domains)
-        if FILE_HOST_DOMAINS["bunkr"].search(domain):
-            return cls._extract_bunkr(soup, page_url)
-
-        # 13. Google Drive
-        if FILE_HOST_DOMAINS["gdrive"].search(domain):
-            return cls._extract_google_drive(soup, page_url)
-
-        # 14. Dropbox
-        if FILE_HOST_DOMAINS["dropbox"].search(domain):
-            return cls._extract_dropbox(soup, page_url)
-
-        # 15. Workupload
-        if FILE_HOST_DOMAINS["workupload"].search(domain):
-            return cls._extract_workupload(soup, page_url)
-
-        # 16. Check if page is an Open HTTP Directory (`Index of /`)
+        # Check if page is an Open HTTP Directory (`Index of /`)
         if cls.is_open_directory(soup, page_url):
             return cls._extract_open_directory_root(soup, page_url)
 
-        # 17. Generic Web Page with direct downloadable links
+        # Generic Web Page with direct downloadable links
         return cls._extract_generic_download_page(soup, page_url)
 
     @classmethod
@@ -759,9 +755,14 @@ class FileHostExtractor:
         )
 
     @classmethod
-    def extract_open_directory_files(cls, html_content: str, page_url: str) -> List[ItemRecord]:
+    def extract_open_directory_files(
+        cls,
+        html_content: str,
+        page_url: str,
+        soup: Optional[BeautifulSoup] = None,
+    ) -> List[ItemRecord]:
         """Parses individual file rows inside an open directory listing."""
-        soup = BeautifulSoup(html_content, "html.parser")
+        soup = soup or make_soup(html_content)
         records: List[ItemRecord] = []
 
         for a in soup.find_all("a", href=True):

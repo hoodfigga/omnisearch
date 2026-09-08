@@ -7,14 +7,15 @@ from typing import Any, Dict, Optional
 from bs4 import BeautifulSoup
 from omnisearch.models.video import VideoMetadataSource, VideoRecord
 from omnisearch.core.dedup import resolve_platform_and_id
+from omnisearch.parsing import make_soup
 
 
 class OEmbedExtractor:
     """Discovers and parses oEmbed endpoints and responses."""
 
     @classmethod
-    def discover_endpoint(cls, html_content: str) -> Optional[str]:
-        soup = BeautifulSoup(html_content, "html.parser")
+    def discover_endpoint(cls, html_content) -> Optional[str]:
+        soup = html_content if isinstance(html_content, BeautifulSoup) else make_soup(html_content)
         link = soup.find("link", type="application/json+oembed")
         if link and link.get("href"):
             return link.get("href")
@@ -39,7 +40,7 @@ class OEmbedExtractor:
         # Extract iframe src if present
         embed_url = None
         if html_code and "src=" in html_code:
-            soup = BeautifulSoup(html_code, "html.parser")
+            soup = make_soup(html_code)
             iframe = soup.find("iframe")
             if iframe and iframe.get("src"):
                 embed_url = iframe.get("src")

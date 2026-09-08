@@ -18,6 +18,7 @@ from omnisearch.models.video import VideoMetadataSource, VideoRecord
 from omnisearch.adapters.base import BaseSourceAdapter
 from omnisearch.extractors.json_ld import parse_iso_datetime
 from omnisearch.extractors.page_extractor import PageExtractor
+from omnisearch.parsing import make_soup
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class AdultVideoNetworkAdapter(BaseSourceAdapter):
         return self._enabled
 
     async def search(self, query: SearchQuery, page: int = 1) -> List[VideoRecord]:
-        search_terms = " ".join(query.extracted_phrases + query.extracted_terms) or query.raw_query
+        search_terms = query.search_terms_string()
         if not search_terms.strip():
             return []
 
@@ -75,7 +76,7 @@ class AdultVideoNetworkAdapter(BaseSourceAdapter):
             }
             resp = await self.http_client.get(url, headers=headers, timeout=8.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 album_links: Set[str] = set()
 
                 for a in soup.find_all("a", href=True):
@@ -102,7 +103,7 @@ class AdultVideoNetworkAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(album_url, headers=headers, timeout=8.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 h1 = soup.find("h1")
                 album_title = h1.get_text().strip() if h1 else ""
 
@@ -269,7 +270,7 @@ class AdultVideoNetworkAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(url, headers=headers, timeout=6.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for item in soup.select("div.video-item, div.video_item"):
                     a = item.find("a", class_="thumb") or item.find("a", href=True)
                     if not a:
@@ -307,7 +308,7 @@ class AdultVideoNetworkAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(url, headers=headers, timeout=6.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for div in soup.select("div.video-box, div.js_video-wrapper"):
                     a = div.find("a", href=re.compile(r"/watch/"))
                     if not a:

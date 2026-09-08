@@ -23,6 +23,7 @@ from omnisearch.adapters.base import BaseSourceAdapter
 from omnisearch.extractors.page_extractor import PageExtractor
 from omnisearch.extractors.file_hosts import detect_file_extension, infer_item_type
 from omnisearch.core.dedup import resolve_platform_and_id, DeduplicationEngine
+from omnisearch.parsing import make_soup
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +62,39 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
     def source_name(self) -> str:
         return "Open Web Crawler (Entire Internet - SafeSearch Off)"
 
+    # Engine result-domains to skip. Exact hosts only: drive.google.com and
+    # docs.google.com are primary targets of our own dorks and MUST survive,
+    # so we cannot blanket-skip *.google.com.
+    SKIP_RESULT_HOSTS = {
+        "duckduckgo.com",
+        "html.duckduckgo.com",
+        "www.duckduckgo.com",
+        "google.com",
+        "www.google.com",
+        "bing.com",
+        "www.bing.com",
+        "yandex.com",
+        "www.yandex.com",
+        "search.yahoo.com",
+        "r.search.yahoo.com",
+        "yahoo.com",
+        "www.yahoo.com",
+        "qwant.com",
+        "www.qwant.com",
+        "msn.com",
+        "www.msn.com",
+    }
+
+    @classmethod
+    def _is_engine_domain(cls, url: str) -> bool:
+        try:
+            host = (urlparse(url).hostname or "").lower()
+        except Exception:
+            return False
+        return host in cls.SKIP_RESULT_HOSTS
+
     async def search(self, query: SearchQuery, page: int = 1) -> List[ItemRecord]:
-        search_terms = " ".join(query.extracted_phrases + query.extracted_terms) or query.raw_query
+        search_terms = query.search_terms_string()
         if not search_terms.strip():
             return []
 
@@ -142,9 +174,7 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
             for item in res:
                 if not isinstance(item, WebSearchResult) or not item.url.startswith("http"):
                     continue
-                parsed = urlparse(item.url)
-                domain = parsed.netloc.lower()
-                if any(skip in domain for skip in ("duckduckgo.com", "google.com", "bing.com", "yandex.com", "yahoo.com", "qwant.com", "msn.com")):
+                if self._is_engine_domain(item.url):
                     continue
                 norm_url = item.url.split("#")[0].rstrip("/")
                 if norm_url not in seen_urls:
@@ -185,7 +215,7 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(url, headers=headers, timeout=6.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for item in soup.select("li.b_algo"):
                     a = item.select_one("h2 a")
                     if not a:
@@ -217,7 +247,7 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(url, headers=headers, timeout=6.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for res in soup.select("div[data-type='web'], div.snippet, div.search-result"):
                     a = res.select_one("a[href^='http']")
                     if not a:
@@ -245,7 +275,7 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
             resp = await self.http_client.post(url, data={"q": search_terms, "kp": "-2"}, headers=client_headers, timeout=6.0)
 
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for r in soup.select("div.result"):
                     a = r.select_one("a.result__a")
                     if not a:
@@ -265,9 +295,14 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
         return discovered
 
     async def _search_searxng(self, search_terms: str, page: int) -> List[WebSearchResult]:
-        """Queries public SearXNG meta-search engines with safesearch=0 (disabled)."""
-        discovered: List[WebSearchResult] = []
-        for instance in self.SEARXNG_INSTANCES:
+        """Queries public SearXNG meta-search engines with safesearch=0 (disabled).
+
+        All instances are queried concurrently; results are merged so one
+        dead instance no longer blocks (or skips) the others.
+        """
+
+        async def _query(instance: str) -> List[WebSearchResult]:
+            found: List[WebSearchResult] = []
             try:
                 url = f"{instance}/search"
                 params = {
@@ -285,14 +320,21 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
                         title = item.get("title", "")
                         content = item.get("content", "")
                         if item_url and item_url.startswith("http"):
-                            discovered.append(WebSearchResult(url=item_url, title=title, snippet=content))
-                    if discovered:
-                        break
+                            found.append(WebSearchResult(url=item_url, title=title, snippet=content))
             except Exception as exc:
                 logger.debug("SearXNG instance %s error: %s", instance, exc)
-                continue
+            return found
 
-        return discovered
+        instance_results = await asyncio.gather(
+            *[_query(instance) for instance in self.SEARXNG_INSTANCES],
+            return_exceptions=True,
+        )
+
+        merged: List[WebSearchResult] = []
+        for res in instance_results:
+            if isinstance(res, list):
+                merged.extend(res)
+        return merged
 
     async def _search_yahoo(self, search_terms: str) -> List[WebSearchResult]:
         """Queries Yahoo search and decodes redirect URLs."""
@@ -302,7 +344,7 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(url, headers=headers, timeout=6.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for a in soup.select('div.compText a, h3 a, a[href*="r.search.yahoo.com"]'):
                     href = a.get("href", "")
                     title = a.get_text().strip()
@@ -352,7 +394,7 @@ class OpenWebDiscoveryAdapter(BaseSourceAdapter):
                 if records:
                     return records
 
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 title_tag = soup.find("title") or soup.find("h1")
                 title = title_tag.get_text().strip() if title_tag else ""
                 desc_tag = soup.find("meta", attrs={"name": "description"})

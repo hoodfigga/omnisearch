@@ -19,6 +19,8 @@ from omnisearch.models.query import SearchQuery
 from omnisearch.models.video import ItemRecord, MetadataSource
 from omnisearch.adapters.base import BaseSourceAdapter
 from omnisearch.extractors.page_extractor import PageExtractor
+from omnisearch.extractors.file_hosts import resolve_file_host_key
+from omnisearch.parsing import make_soup
 
 logger = logging.getLogger(__name__)
 
@@ -26,37 +28,8 @@ logger = logging.getLogger(__name__)
 class FileHostingAdapter(BaseSourceAdapter):
     """Discovers file uploads, downloads, and archives across major cyberlockers and cloud storage platforms."""
 
-    TARGET_DOMAINS = [
-        "mediafire.com",
-        "mega.nz",
-        "mega.io",
-        "rapidgator.net",
-        "1fichier.com",
-        "turbobit.net",
-        "nitroflare.com",
-        "ddownload.com",
-        "katfile.com",
-        "pixeldrain.com",
-        "gofile.io",
-        "krakenfiles.com",
-        "catbox.moe",
-        "tmpfiles.org",
-        "cyberfile.me",
-        "cyberdrop.me",
-        "saint2.su",
-        "bunkr.cr",
-        "bunkr.is",
-        "bunkr.si",
-        "bunkrr.su",
-        "bunkr.site",
-        "bunkr.black",
-        "bunkr.ws",
-        "bunkr.ps",
-        "bunkr.ph",
-        "drive.google.com",
-        "dropbox.com",
-        "workupload.com",
-    ]
+    # Discovery dorks target these hosts; candidate filtering uses
+    # resolve_file_host_key() (host-anchored, in extractors/file_hosts.py).
 
     @property
     def source_id(self) -> str:
@@ -67,7 +40,7 @@ class FileHostingAdapter(BaseSourceAdapter):
         return "File Hosts & Cyberlockers (MediaFire, MEGA, Rapidgator, 1Fichier, Pixeldrain, Bunkr, GDrive, etc.)"
 
     async def search(self, query: SearchQuery, page: int = 1) -> List[ItemRecord]:
-        search_terms = " ".join(query.extracted_phrases + query.extracted_terms) or query.raw_query
+        search_terms = query.search_terms_string()
         if not search_terms.strip():
             return []
 
@@ -101,7 +74,7 @@ class FileHostingAdapter(BaseSourceAdapter):
             }
             resp = await self.http_client.get(url, headers=headers, timeout=7.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 album_links: List[tuple[str, str]] = []
 
                 for a in soup.find_all("a", href=True):
@@ -130,7 +103,7 @@ class FileHostingAdapter(BaseSourceAdapter):
                 # Resolve relative hrefs against the album's own origin instead
                 # of a hardcoded bunkr.cr (Bunkr rotates mirror domains).
                 album_origin = f"{urlparse(album_url).scheme}://{urlparse(album_url).netloc}"
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for div in soup.find_all("div", class_=re.compile("grid-images_box|the_box", re.I)):
                     a_file = div.find("a", href=re.compile(r"/f/|/d/|/v/|/file/", re.I))
                     if not a_file:
@@ -190,9 +163,9 @@ class FileHostingAdapter(BaseSourceAdapter):
         for u in discovered:
             if not u.startswith("http"):
                 continue
-            parsed = urlparse(u)
-            domain = parsed.netloc.lower()
-            if any(target in domain for target in self.TARGET_DOMAINS):
+            # Host-anchored check: substring matching would accept
+            # 'mediafire.com.evil.io' as a MediaFire link.
+            if resolve_file_host_key(u) is not None:
                 clean_urls.append(u)
 
         return clean_urls
@@ -204,7 +177,7 @@ class FileHostingAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(url, headers=headers, timeout=6.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for a in soup.select('div.compText a, h3 a, a[href*="r.search.yahoo.com"]'):
                     href = a.get("href", "")
                     if "RU=" in href:
@@ -225,7 +198,7 @@ class FileHostingAdapter(BaseSourceAdapter):
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             resp = await self.http_client.get(url, headers=headers, timeout=6.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for a in soup.select("li.b_algo h2 a, h2 a"):
                     href = a.get("href", "")
                     if "/ck/a?" in href and "&u=" in href:
@@ -256,7 +229,7 @@ class FileHostingAdapter(BaseSourceAdapter):
             }
             resp = await self.http_client.post(url, data={"q": query_str, "kp": "-2"}, headers=client_headers, timeout=6.0)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = make_soup(resp.text)
                 for link in soup.find_all("a", href=True):
                     href = link.get("href", "")
                     if "uddg=" in href:

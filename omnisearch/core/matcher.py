@@ -191,6 +191,28 @@ class MatchEngine:
 
         return MatchEvaluationResult(is_match=False, spans=[])
 
+    # Field aliases: 'meta' matches any non-title field (documented as
+    # "matches anywhere in title, filename, description, or tags" — the
+    # metadata fields), since no searchable field is literally named "meta".
+    FIELD_ALIASES: Dict[str, Optional[str]] = {"meta": None}
+
+    @classmethod
+    def _resolve_fields(
+        cls,
+        specific_field: Optional[str],
+        target_fields: Dict[str, str],
+    ) -> Dict[str, str]:
+        """Resolves a field directive to the fields to search.
+
+        'meta' expands to every field except title/file_name. Unknown fields
+        resolve to themselves (empty content → no match).
+        """
+        if specific_field is None:
+            return target_fields
+        if specific_field == "meta":
+            return {k: v for k, v in target_fields.items() if k not in ("title", "file_name")}
+        return {specific_field: target_fields.get(specific_field, "")}
+
     @classmethod
     def _match_term(
         cls,
@@ -204,10 +226,37 @@ class MatchEngine:
             return spans
 
         # Domain-like terms (site:mediafire.com) must match as contiguous
-        # phrases, not word-by-word tokens ("mediafire", "com").
-        is_domainish = specific_field == "site" or (
+        # phrases, not word-by-word tokens ("mediafire", "com"), and must be
+        # host-anchored so 'mediafire.com.evil.io' cannot spoof the match.
+        is_site_field = specific_field == "site"
+        is_domainish = is_site_field or (
             specific_field is None and re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", term, re.I)
         )
+        if is_site_field and "." in term:
+            # Domain term against the site field ("platform domain"):
+            # the match must end at a true host boundary. A '.' immediately
+            # after the match means it is a prefix of a longer host
+            # (mediafire.com.evil.io) and must be rejected; a '.' before it
+            # is a subdomain (download.mediafire.com) and stays valid.
+            regex = build_word_boundary_regex(term, exact_phrase=True, case_insensitive=True)
+            content = target_fields.get("site", "")
+            for start, end, matched_text in find_all_spans(content, regex):
+                after = content[end: end + 1]
+                if after and (after == "." or after.isalnum() or after == "-"):
+                    continue  # part of a longer host token — reject
+                spans.append(
+                    MatchSpan(
+                        field="site",
+                        term=term,
+                        start=start,
+                        end=end,
+                        matched_text=matched_text,
+                        is_exact_phrase=False,
+                        is_stemmed=False,
+                    )
+                )
+            return spans
+
         regex = (
             build_word_boundary_regex(term, exact_phrase=True, case_insensitive=True)
             if is_domainish
@@ -215,7 +264,7 @@ class MatchEngine:
         )
         allow_stemming = options.match_mode == MatchMode.SEMANTIC_EXPANSION
 
-        fields_to_check = {specific_field: target_fields.get(specific_field, "")} if specific_field else target_fields
+        fields_to_check = cls._resolve_fields(specific_field, target_fields)
 
         for field_name, content in fields_to_check.items():
             if not content:
@@ -272,7 +321,7 @@ class MatchEngine:
             return spans
 
         regex = build_word_boundary_regex(phrase, exact_phrase=True, case_insensitive=True)
-        fields_to_check = {specific_field: target_fields.get(specific_field, "")} if specific_field else target_fields
+        fields_to_check = cls._resolve_fields(specific_field, target_fields)
 
         for field_name, content in fields_to_check.items():
             if not content:

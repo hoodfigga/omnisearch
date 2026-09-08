@@ -5,7 +5,7 @@ Search query models, AST nodes for Boolean expressions, and search options.
 from __future__ import annotations
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 from pydantic import BaseModel, Field
 from omnisearch.models.video import MatchMode, VideoRecord
 
@@ -127,6 +127,29 @@ class SearchQuery(BaseModel):
     parsed_ast: Optional[ASTNode] = None
     extracted_terms: List[str] = Field(default_factory=list)
     extracted_phrases: List[str] = Field(default_factory=list)
+
+    def search_terms_string(self) -> str:
+        """Deduplicated search terms for engine queries.
+
+        Phrases are primary and already contain their member words (in both
+        raw and tokenized form), so terms covered by a phrase are not
+        repeated. Prevents '"blender 4.0" installer' from becoming
+        'blender 4.0 blender 4.0 installer' or 'blender 4.0 4 0 installer'.
+        """
+        from omnisearch.core.normalizer import tokenize
+
+        parts: List[str] = []
+        covered: Set[str] = set()
+        for phrase in self.extracted_phrases:
+            parts.append(phrase)
+            covered.update(w.lower() for w in phrase.split())
+            covered.update(tokenize(phrase))
+        for term in self.extracted_terms:
+            if term.lower() not in covered:
+                parts.append(term)
+        if not parts:
+            return self.raw_query
+        return " ".join(parts)
 
 
 class SearchMetrics(BaseModel):

@@ -207,7 +207,10 @@ class ResilientHttpClient:
                         current_url = next_url
                         break
                     return resp
-                except (httpx.ConnectError, httpx.ReadTimeout, httpx.PoolTimeout, httpx.RemoteProtocolError) as exc:
+                except httpx.TransportError as exc:
+                    # TransportError covers ConnectError, ConnectTimeout,
+                    # ReadTimeout, WriteTimeout, PoolTimeout, and
+                    # RemoteProtocolError. TooManyRedirects is NOT retried.
                     last_exception = exc
                     if attempt < self.max_retries:
                         wait = (2.0 ** attempt) * 0.5 + random.uniform(0.1, 0.4)

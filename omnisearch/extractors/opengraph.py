@@ -3,20 +3,25 @@ OpenGraph video metadata extractor (<meta property="og:*"> and <meta property="v
 """
 
 from __future__ import annotations
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from bs4 import BeautifulSoup
 from omnisearch.models.video import MetadataSource, ItemRecord, ItemType
 from omnisearch.core.dedup import resolve_platform_and_id
 from omnisearch.extractors.json_ld import parse_iso_datetime
 from omnisearch.extractors.file_hosts import detect_file_extension, infer_item_type
+from omnisearch.parsing import make_soup
 
 
 class OpenGraphExtractor:
     """Extracts OpenGraph metadata from HTML."""
 
     @classmethod
-    def extract_from_html(cls, html_content: str, page_url: str) -> Optional[ItemRecord]:
-        soup = BeautifulSoup(html_content, "html.parser")
+    def extract_from_html(
+        cls,
+        html_content: Union[str, BeautifulSoup],
+        page_url: str,
+    ) -> Optional[ItemRecord]:
+        soup = html_content if isinstance(html_content, BeautifulSoup) else make_soup(html_content)
         meta_tags = soup.find_all("meta")
 
         og_data: Dict[str, str] = {}

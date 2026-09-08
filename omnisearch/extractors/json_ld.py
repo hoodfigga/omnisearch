@@ -6,10 +6,11 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from bs4 import BeautifulSoup
 from omnisearch.models.video import VideoMetadataSource, VideoRecord
 from omnisearch.core.dedup import resolve_platform_and_id
+from omnisearch.parsing import make_soup
 
 
 ISO8601_DURATION_RE = re.compile(
@@ -57,9 +58,13 @@ class JsonLdExtractor:
     """Extracts VideoObject structures from HTML <script type="application/ld+json">."""
 
     @classmethod
-    def extract_from_html(cls, html_content: str, page_url: str) -> List[VideoRecord]:
+    def extract_from_html(
+        cls,
+        html_content: Union[str, BeautifulSoup],
+        page_url: str,
+    ) -> List[VideoRecord]:
         records: List[VideoRecord] = []
-        soup = BeautifulSoup(html_content, "html.parser")
+        soup = html_content if isinstance(html_content, BeautifulSoup) else make_soup(html_content)
         scripts = soup.find_all("script", type="application/ld+json")
 
         for script in scripts:

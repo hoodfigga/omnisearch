@@ -125,7 +125,7 @@ Configuration via environment variables:
 This starts the Uvicorn web server and opens the discovery dashboard:
 ```
 ======================================================================
-  🚀 OmniSearch Universal Discovery Engine v2.2.0
+  🚀 OmniSearch Universal Discovery Engine v2.3.0
 ======================================================================
   🌐 Live Dashboard:  http://localhost:8000
   📡 API Docs:        http://localhost:8000/docs
@@ -239,7 +239,7 @@ OmniSearch includes a comprehensive test suite:
 .venv/bin/pytest -v
 ```
 
-Verified test coverage (94 tests):
+Verified test coverage (122 tests):
 - SSRF security protection rejecting private LANs, link-local, loopback, and cloud metadata (169.254.169.254)
 - Deterministic cache key generation (no collision across filters) and LRU capacity eviction
 - Async application lifespan with complete HTTP connection pool teardown
@@ -261,6 +261,12 @@ Verified test coverage (94 tests):
   Zenodo (direct file links), arXiv (Atom→PDF), OpenLibrary (public ebooks),
   Commons (direct upload URLs, utm-stripped), Openverse (image+audio),
   Nyaa (RSS torrents w/ seeders+infoHash), npm/crates.io (tarballs)
+- v2.3 hardening: `meta:` field directive expansion, host-boundary-anchored
+  `site:` matching (spoofed `mediafire.com.evil.io` rejected), naive-datetime
+  date filters (`--after 2025-01-01`), deduplicated engine search terms,
+  timeout-aware cache keys, deadline-truncated responses never cached,
+  ConnectTimeout/WriteTimeout retried via TransportError, single-parse
+  (lxml) HTML extraction pipeline, concurrent SearXNG querying
 
 ---
 
@@ -270,6 +276,7 @@ Verified test coverage (94 tests):
 ├── omnisearch/
 │   ├── __init__.py
 │   ├── __main__.py
+│   ├── parsing.py                  # Shared single-parse HTML helper (lxml w/ fallback)
 │   ├── cli.py                    # Rich CLI tool (timeout/date/duration/cache flags)
 │   ├── models/
 │   │   ├── item.py               # Canonical ItemRecord, ItemType & MatchProvenance
@@ -318,7 +325,7 @@ Verified test coverage (94 tests):
 │           ├── index.html        # Clean discovery dashboard
 │           ├── style.css         # Modern list view CSS design system
 │           └── app.js            # Interactive client with search highlights
-├── tests/                        # Full automated test suite (94 tests)
+├── tests/                        # Full automated test suite (122 tests)
 ├── assets/
 │   └── logo.jpg                  # OmniSearch logo
 ├── pyproject.toml

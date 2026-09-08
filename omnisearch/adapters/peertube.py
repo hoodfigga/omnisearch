@@ -31,7 +31,7 @@ class PeerTubeAdapter(BaseSourceAdapter):
         return "PeerTube"
 
     async def search(self, query: SearchQuery, page: int = 1) -> List[VideoRecord]:
-        search_terms = " ".join(query.extracted_phrases + query.extracted_terms) or query.raw_query
+        search_terms = query.search_terms_string()
         if not search_terms.strip():
             return []
 
